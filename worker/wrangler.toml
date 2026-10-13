@@ -8,7 +8,7 @@ compatibility_date = "2026-09-01"
 directory = "./public"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
+run_worker_first = true   # 접속 암호 확인을 위해 모든 요청이 Worker 를 거침
 
 [[d1_databases]]
 binding = "DB"

@@ -1,8 +1,10 @@
 # 이슈 키워드
 
-주요 언론사 기사를 분야(정치·경제·사회·국제·IT·과학·연예)별로 모아, 지금 이슈가 되는 키워드를 워드클라우드·순위로 보여주는 사이트.
+주요 언론사 기사를 분야(정치·경제·사회·IT·연예·스포츠·건강·문화)별로 모아, 지금 이슈가 되는 키워드를 워드클라우드·순위로 보여주는 사이트.
 
 - 화면: https://issue-keyword.bluebird1131.workers.dev (병원망에서 열리는 *.workers.dev)
+- 접속 암호: Worker Secret `SITE_PASSWORD` (확인되면 30일 쿠키, 암호를 바꾸면 모두 다시 로그인)
+- 매체: 연합뉴스·조선일보·동아일보(스포츠동아)·한겨레·SBS·한국경제·YTN·뉴시스·전자신문·지디넷코리아. YTN 은 RSS 가 없어 목록 JSON 사용
 - 기사 본문은 저장·게시하지 않음. 제목·매체·발행시각·원문 링크만
 
 ## 구조
@@ -38,5 +40,6 @@
 ## 배포·운영
 
 - Worker: `cd worker && npx -y wrangler@4 deploy` / 스키마: `npx -y wrangler@4 d1 execute issue-keyword-db --remote --file schema.sql`
-- Secrets: Worker `INGEST_TOKEN` = Actions Secret `INGEST_TOKEN` (바꿀 때는 둘 다)
+- Secrets: Worker `INGEST_TOKEN` = Actions Secret `INGEST_TOKEN` (바꿀 때는 둘 다), Worker `SITE_PASSWORD`
+- 암호 바꾸기: `cd worker && npx -y wrangler@4 secret put SITE_PASSWORD`
 - 로컬 실행: `pip install -r requirements.txt` 후 `INGEST_TOKEN=… python scripts/collect.py` (`DRY=1` 이면 저장 없이 snapshot.local.json)

@@ -108,11 +108,33 @@ def art_id(cat, url):
 
 
 # ---------- RSS ----------
+def fetch_ytn(cat, src, mcd):
+    """YTN 은 RSS 가 없어 분야 목록의 '더 보기' JSON 을 4쪽(40건)까지 읽음"""
+    items = []
+    for page in range(1, 5):
+        r = requests.post("https://www.ytn.co.kr/ajax/getMoreNews.php", data={"mcd": mcd, "hcd": "", "page": page, "pivot": ""},
+                          headers={"user-agent": UA, "x-requested-with": "XMLHttpRequest", "referer": f"https://www.ytn.co.kr/news/list.php?mcd={mcd}"}, timeout=25)
+        r.raise_for_status()
+        for d in json.loads(r.text).get("data") or []:
+            jk, title = str(d.get("join_key", "")), clean_title(d.get("title"))
+            if not re.fullmatch(r"\d{12,}", jk) or not title:
+                continue
+            pub = datetime.strptime(jk[:12], "%Y%m%d%H%M").replace(tzinfo=KST)
+            items.append({"cat": cat, "src": src, "title": title, "url": f"https://www.ytn.co.kr/_ln/{d.get('m_cd') or mcd}_{jk}", "pub": fmt(min(pub, NOW))})
+    if not items:
+        raise ValueError("항목 없음")
+    return items
+
+
 def fetch(job):
     cat, src, url = job
     st = {"cat": cat, "src": src, "url": url, "ok": False, "items": 0, "error": ""}
     for attempt in range(2):
         try:
+            if url.startswith("ytn:"):
+                items = fetch_ytn(cat, src, url[4:])
+                st.update(ok=True, items=len(items), error="")
+                return st, items
             r = requests.get(url, headers={"user-agent": UA, "accept": "application/rss+xml,application/xml,text/xml,*/*"}, timeout=25)
             r.raise_for_status()
             f = feedparser.parse(r.content)

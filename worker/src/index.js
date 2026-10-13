@@ -2,7 +2,10 @@
  * 이슈 키워드 API (Cloudflare Worker) — 화면(public/)은 Worker 정적 자산으로 같이 제공
  * 병원망은 구글을 막지만 *.workers.dev 는 열려 있어 화면·데이터 모두 여기서 제공함.
  *
- * 공개
+ * 접속 암호 (SITE_PASSWORD) — 확인되면 30일 쿠키. 암호를 바꾸면 기존 쿠키는 모두 무효
+ *   POST /api/login {password} / POST /api/logout
+ *   암호 없이 열리는 것: 로그인 화면, /assets/* (글꼴·아이콘), 수집 스크립트 전용 API
+ * 암호 확인 후
  *   GET /api/snapshot                     기간별·분야별 키워드 순위 + 수집 현황 (수집 스크립트가 매시간 만듦)
  *   GET /api/articles?cat&kw&src&q&from&to&limit&offset   기사 목록 (제목·매체·시각·링크)
  * 수집 스크립트 전용 (Authorization: Bearer INGEST_TOKEN)
@@ -13,16 +16,26 @@
  *   PUT  /api/daily {rows:[{date,body}]}   일별 집계 저장
  *   PUT  /api/kv/snapshot                  화면용 결과 저장
  *
- * Secrets: INGEST_TOKEN (GitHub Actions Secret 과 같은 값)
+ * Secrets: INGEST_TOKEN (GitHub Actions Secret 과 같은 값), SITE_PASSWORD (팀원 접속 암호)
  * 무료 플랜 요청당 CPU 10ms — 큰 JSON 은 파싱하지 않고 문자열 그대로 저장·전달
  */
 const KV_KEYS = ['snapshot'];
+const BOT_PATHS = /^\/api\/(recent|ingest|rekey|daily|kv\/[a-z]+)$/;
+const COOKIE = 'ik_auth', COOKIE_DAYS = 30;
 
 export default {
   async fetch(req, env) {
-    const url = new URL(req.url);
-    if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
+    const url = new URL(req.url), p = url.pathname;
     try {
+      if (p.startsWith('/assets/')) return env.ASSETS.fetch(req);
+      if (BOT_PATHS.test(p)) return await route(req, env, url);
+      if (p === '/api/login' && req.method === 'POST') return await login(req, env);
+      if (p === '/api/logout' && req.method === 'POST') return json({ ok: true }, 200, { 'set-cookie': `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax` });
+      if (!(await signedIn(req, env))) {
+        if (p.startsWith('/api/')) return json({ error: '접속 암호가 필요합니다.' }, 401);
+        return new Response(LOGIN_HTML, { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+      }
+      if (!p.startsWith('/api/')) return env.ASSETS.fetch(req);
       return await route(req, env, url);
     } catch (e) {
       return json({ error: String(e.message || e) }, 500);
@@ -30,13 +43,36 @@ export default {
   },
 };
 
+/** 쿠키 값 = HMAC(암호, 고정 문구). 암호가 바뀌면 값도 바뀌어 다시 로그인 */
+async function authValue(env) {
+  if (!env.SITE_PASSWORD) throw new Error('SITE_PASSWORD 가 설정되지 않았습니다.');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.SITE_PASSWORD), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('issue-keyword-site-v1'));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function signedIn(req, env) {
+  const m = (req.headers.get('cookie') || '').match(/(?:^|;\s*)ik_auth=([0-9a-f]{64})/);  // ik_auth = COOKIE
+  return !!m && safeEqual(m[1], await authValue(env));
+}
+
+async function login(req, env) {
+  const { password = '' } = await req.json().catch(() => ({}));
+  if (!safeEqual(String(password), env.SITE_PASSWORD || '')) {
+    await new Promise(r => setTimeout(r, 600));  // 연속 대입 늦추기
+    return json({ error: '암호가 맞지 않습니다.' }, 401);
+  }
+  const v = await authValue(env);
+  return json({ ok: true }, 200, { 'set-cookie': `${COOKIE}=${v}; Path=/; Max-Age=${COOKIE_DAYS * 86400}; HttpOnly; Secure; SameSite=Lax` });
+}
+
 async function route(req, env, url) {
   const p = url.pathname, q = url.searchParams, m = req.method;
 
   if (m === 'GET' && p === '/api/snapshot') {
     const row = await env.DB.prepare('SELECT body, updated FROM kv WHERE k = ?').bind('snapshot').first();
     if (!row) return json({ error: '아직 수집 결과가 없습니다.' }, 404);
-    return new Response(row.body, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=60' } });
+    return new Response(row.body, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'private, max-age=60' } });
   }
 
   if (m === 'GET' && p === '/api/articles') return articles(env, q);
@@ -119,14 +155,18 @@ async function articles(env, q) {
   const rs = await env.DB.prepare(
     `SELECT cat, src, title, url, pub FROM articles WHERE ${where.join(' AND ')} ORDER BY pub DESC, id LIMIT ? OFFSET ?`,
   ).bind(...args, limit + 1, offset).raw();
-  return json({ rows: rs.slice(0, limit), more: rs.length > limit }, 200, { 'cache-control': 'public, max-age=60' });
+  return json({ rows: rs.slice(0, limit), more: rs.length > limit }, 200, { 'cache-control': 'private, max-age=60' });
 }
 
 function authorized(req, env) {
-  const got = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, ''), want = env.INGEST_TOKEN || '';
-  if (!want || got.length !== want.length) return false;
+  const got = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  return !!env.INGEST_TOKEN && safeEqual(got, env.INGEST_TOKEN);
+}
+
+function safeEqual(a, b) {
+  if (!b || a.length !== b.length) return false;
   let d = 0;
-  for (let i = 0; i < want.length; i++) d |= got.charCodeAt(i) ^ want.charCodeAt(i);
+  for (let i = 0; i < b.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return d === 0;
 }
 
@@ -139,3 +179,37 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, Math.floor(v) || a));
 function json(obj, status = 200, headers = {}) {
   return new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...headers } });
 }
+
+const LOGIN_HTML = `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>이슈 키워드</title>
+<style>
+@font-face { font-family: "Pretendard Variable"; font-weight: 45 920; font-display: swap; src: url("/assets/PretendardVariable.woff2") format("woff2-variations"); }
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: #f7f4ec; color: #292524;
+  font-family: "Pretendard Variable", -apple-system, "Malgun Gothic", sans-serif; -webkit-font-smoothing: antialiased; }
+.card { width: 100%; max-width: 360px; background: #fffdf8; border: 1px solid #e8e2d4; border-radius: 16px; padding: 28px 24px 24px; }
+.mark { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: #1c1917; color: #fafaf9; margin-bottom: 14px; }
+h1 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -0.02em; color: #1c1917; }
+p { margin: 6px 0 18px; font-size: 14px; color: #78716c; }
+input, button { font: inherit; width: 100%; height: 42px; border-radius: 10px; }
+input { border: 1px solid #e8e2d4; background: #fffdf8; padding: 0 12px; font-size: 15px; }
+input:focus { outline: 2px solid #a1a1aa; outline-offset: 1px; }
+button { margin-top: 10px; border: 0; background: #1c1917; color: #fafaf9; font-size: 15px; font-weight: 700; cursor: pointer; }
+button:hover { opacity: .88; }
+.err { min-height: 20px; margin-top: 10px; font-size: 13.5px; color: #b91c1c; }
+</style></head>
+<body><form class="card" id="f">
+<div class="mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+<h1>이슈 키워드</h1><p>접속 암호를 입력하세요</p>
+<input type="password" name="password" placeholder="접속 암호" autocomplete="current-password" autofocus required>
+<button type="submit">들어가기</button><div class="err" id="err"></div>
+</form>
+<script>
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: e.target.password.value }) });
+  if (r.ok) location.reload(); else document.getElementById('err').textContent = (await r.json().catch(() => ({}))).error || '로그인 실패';
+};
+</script></body></html>`;

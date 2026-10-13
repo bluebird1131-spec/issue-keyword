@@ -63,7 +63,7 @@ a { color: inherit; text-decoration: none; }
 .notice .lucide { margin-top: 3px; }
 
 /* 분야별 한눈에 */
-.overview { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .ov { padding: 14px 14px 12px; cursor: pointer; text-align: left; transition: border-color .15s, box-shadow .15s; }
 .ov:hover { border-color: var(--border-strong); }
 .ov.on { border-color: var(--heading); box-shadow: 0 0 0 1px var(--heading) inset; }
@@ -140,7 +140,7 @@ a { color: inherit; text-decoration: none; }
 .feeds .ok { color: var(--ok); font-weight: 700; }
 .feeds .bad { color: var(--bad); font-weight: 700; }
 
-@media (max-width: 1100px) { .overview { grid-template-columns: repeat(3, 1fr); } .main { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .main { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
   .wrap { padding: 0 16px; }
   .tb { gap: 10px; }
@@ -167,6 +167,7 @@ a { color: inherit; text-decoration: none; }
     <div class="tb-right">
       <span id="updated"><i data-lucide="clock"></i><span></span></span>
       <a class="hide-m" href="https://bluebird1131-spec.github.io/medical-trend-dashboard/" target="_blank" rel="noopener"><i data-lucide="stethoscope"></i>의료계 동향</a>
+      <a href="#" id="logout" title="이 브라우저에서 로그아웃"><i data-lucide="lock"></i><span class="hide-m">잠금</span></a>
     </div>
   </div>
 </header>
@@ -257,6 +258,7 @@ let kwPage = { offset: 0 }, allPage = { offset: 0 };
 async function load() {
   try {
     const r = await fetch('/api/snapshot', { cache: 'no-store' });
+    if (r.status === 401) return location.reload();
     if (!r.ok) throw new Error((await r.json()).error || r.status);
     S = await r.json();
   } catch (e) {
@@ -362,6 +364,7 @@ function rowHtml(a, kw, showCat) {
 
 async function fetchArticles(params) {
   const r = await fetch('/api/articles?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)));
+  if (r.status === 401) location.reload();
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.status);
   return j;
@@ -432,6 +435,7 @@ function route() {
   if (v === 'kw') renderKw(); else if (!allPage.offset) searchAll(true);
   icons();
 }
+$('logout').onclick = async e => { e.preventDefault(); await fetch('/api/logout', { method: 'POST' }); location.reload(); };
 addEventListener('hashchange', () => S && route());
 let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => S && !$('view-kw').hidden && drawCloud(), 200); });
 icons();
