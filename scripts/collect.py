@@ -35,6 +35,9 @@ DAILY_KEEP, PAIR_KEEP = 400, 300  # 하루·분야별로 저장할 단어·두 �
 LOAD_DAYS = 7          # 이슈 묶기·3일·7일 순위는 최근 7일 기사로 직접 계산 (30일은 일별 집계 합산)
 CLUSTER_TH = 0.4       # 같은 이슈로 볼 공통 키워드 비율 (드문 단어 가중)
 ISSUE_N, ISSUE_IDS = 20, 40
+HOURS, HOUR_ROWS = 24, 25      # 시간별 흐름: 최근 24시간, 상위 25개
+LONG_DAYS, LONG_ROWS = 30, 25  # 장기 흐름: 최근 30일, 상위 25개
+MIN_DAY_ARTICLES = 1000        # 하루 기사가 이보다 적으면 비교 기준·장기 흐름에서 빼는 날 (평소 하루 4천 건 안팎)
 
 
 def fmt(dt):
@@ -367,6 +370,75 @@ def issues(arts, idx, base, n_all):
     return top, rise
 
 
+def hourly(arts, last24):
+    """시간별 흐름: 최근 24시간 상위 단어·두 단어가 시간대별로 몇 건씩 나왔는지"""
+    end = NOW.replace(minute=0, second=0, microsecond=0)
+    hours = [fmt(end - timedelta(hours=HOURS - 1 - i))[:13] for i in range(HOURS)]
+    pos = {h: i for i, h in enumerate(hours)}
+    res = {"hours": hours, "data": {}}
+    for c in CATS:
+        rows = {"words": {k["w"]: k for k in last24[c]["words"]["top"][:HOUR_ROWS]},
+                "pairs": {" ".join(sorted(k["w"].split())): k for k in last24[c]["pairs"]["top"][:HOUR_ROWS]}}
+        h = {kind: {k: [0] * HOURS for k in rows[kind]} for kind in rows}
+        for a in arts:
+            if a["cat"] != c or a["pub"][:13] not in pos:
+                continue
+            i, kws = pos[a["pub"][:13]], a["kws"].split()
+            for w in set(kws):
+                if w in h["words"]:
+                    h["words"][w][i] += 1
+            for k in {k for k, _ in pair_keys(kws)}:
+                if k in h["pairs"]:
+                    h["pairs"][k][i] += 1
+        res["data"][c] = {kind: [{"w": it["w"], "n": sum(h[kind][k]), "m": it["m"], "h": h[kind][k]} for k, it in rows[kind].items()]
+                          for kind in rows}
+    return res
+
+
+def full_day(daily, d):
+    """비교·장기 흐름에 쓸 만큼 모인 날인지 (첫 수집 때 RSS 에 섞여 들어온 며칠 전 기사 몇 건짜리 날 제외)"""
+    return d in daily and sum(daily[d]["total"].values()) >= MIN_DAY_ARTICLES
+
+
+def longterm(daily, day, disp):
+    """장기 흐름: 최근 30일 중 며칠이나 꾸준히 다뤄졌는지 (하루 2건·2개 매체 이상이면 '다룬 날')"""
+    dates = [day(i) for i in range(LONG_DAYS - 1, -1, -1)]
+    have = [d for d in dates if full_day(daily, d)]
+    res = {"dates": dates, "have": [full_day(daily, d) or d == dates[-1] for d in dates], "dataDays": len(have), "data": {}}
+    for c in CATS:
+        res["data"][c] = {}
+        for kind in ("words", "pairs"):
+            src = "w" if kind == "words" else "p"
+            series = collections.defaultdict(lambda: [0] * LONG_DAYS)
+            on = collections.defaultdict(lambda: [False] * LONG_DAYS)
+            for i, d in enumerate(dates):
+                for k, (n, srcs) in daily.get(d, {}).get(src, {}).get(c, {}).items():
+                    series[k][i] = n
+                    on[k][i] = n >= 2 and len(srcs.split("|")) >= 2
+            present = collections.Counter({k: sum(v) for k, v in on.items()})
+
+            def streak(k):
+                d = on[k]
+                i = LONG_DAYS - 1 if d[-1] else LONG_DAYS - 2  # 오늘은 아직 덜 모였으면 어제부터
+                run = 0
+                while i >= 0 and d[i]:
+                    run += 1; i -= 1
+                return run
+
+            cand = [k for k in present if present[k] >= 2]
+            ranked = sorted(cand, key=lambda k: (-present[k], -sum(series[k]), k))
+            if kind == "pairs":  # 같은 단어 반복(한 단어당 2번까지)·삼각 중복(홍라희-이재용-증여) 제외
+                used, keep, adj = collections.Counter(), [], collections.defaultdict(set)
+                for k in ranked:
+                    a, b = k.split()
+                    if used[a] < 2 and used[b] < 2 and not (adj[a] & adj[b]):
+                        keep.append(k); used.update((a, b)); adj[a].add(b); adj[b].add(a)
+                ranked = keep
+            res["data"][c][kind] = [{"w": disp(k) if kind == "pairs" else k, "days": present[k], "streak": streak(k),
+                                     "n": sum(series[k]), "d": series[k]} for k in ranked[:LONG_ROWS]]
+    return res
+
+
 def main():
     if not TOKEN and not DRY:
         sys.exit("INGEST_TOKEN 이 없습니다.")
@@ -452,7 +524,7 @@ def main():
         else:
             sub = []
             cur = merge_days([daily[day(i)] for i in range(n_days) if day(i) in daily])
-        base_days = [daily[day(i)] for i in base_range if day(i) in daily]
+        base_days = [daily[day(i)] for i in base_range if full_day(daily, day(i))]
         base = merge_days(base_days) if len(base_days) >= 3 else None
         out["periods"].append({"key": key, "label": label, "from": frm, "baseDays": len(base_days),
                                "rising": base is not None, "issues": from_arts})
@@ -471,6 +543,9 @@ def main():
                 i_top, i_rise = issues(sub, by_cat[c], pb, r["N"])
                 blk["issues"] = {"top": i_top, "rise": i_rise}
             out["data"][key][c] = blk
+
+    out["hourly"] = hourly(arts, out["data"]["24h"])
+    out["longterm"] = longterm(daily, day, disp)
 
     srcs = collections.defaultdict(lambda: collections.Counter())
     for a in arts:

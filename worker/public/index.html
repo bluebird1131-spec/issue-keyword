@@ -169,8 +169,42 @@ a { color: inherit; text-decoration: none; }
 .empty-box { padding: 26px 4px; text-align: center; color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); }
 .seg.sm button { height: 28px; padding: 0 10px; font-size: 13px; }
 
+/* 시간별·장기 흐름 (히트맵) */
+.nav .s { display: none; }
+.catbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.catbar button { height: 34px; padding: 0 14px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); font-size: 14px; font-weight: 700; color: var(--soft); cursor: pointer; }
+.catbar button:hover { border-color: var(--border-strong); color: var(--heading); }
+.catbar button.on { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.hm-card { padding: 16px 16px 12px; }
+.hm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.hm-wrap { overflow-x: auto; margin-top: 10px; padding-bottom: 4px; }
+table.hm { border-collapse: separate; border-spacing: 2px; }
+.hm th, .hm td { padding: 0; }
+.hm thead th { font-size: 11.5px; font-weight: 600; color: var(--muted); height: 30px; text-align: left; vertical-align: bottom; white-space: nowrap; }
+.hm thead th.c { position: relative; }
+.hm thead th.c span { position: absolute; left: 0; bottom: 2px; }
+.hm thead th.c.day span { color: var(--heading); font-weight: 800; }
+.hm .kw { position: sticky; left: 0; z-index: 1; background: var(--card); min-width: 150px; max-width: 190px; padding-right: 10px; font-size: 14.5px; font-weight: 700; color: var(--heading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.hm .kw i { font-style: normal; display: inline-block; width: 22px; text-align: right; margin-right: 8px; color: var(--faint); font-size: 12.5px; }
+.hm tbody tr:hover .kw, .hm tr.on .kw { color: var(--accent); }
+.hm td.c { width: 22px; min-width: 22px; height: 24px; border-radius: 4px; cursor: pointer; }
+.hm td.c:hover, .hm td.c.sel { box-shadow: inset 0 0 0 2px var(--heading); }
+.hm td.c.nd { background: repeating-linear-gradient(135deg, transparent 0 3px, var(--border) 3px 4px); cursor: default; }
+.hm .num { padding-left: 10px; font-size: 13px; color: var(--muted); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hm .num b { color: var(--heading); font-weight: 800; }
+.hm thead .num { text-align: right; }
+.legend { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.legend i { width: 16px; height: 12px; border-radius: 3px; display: inline-block; }
+.legend .gap { margin-left: 12px; }
+#tip { position: fixed; z-index: 60; pointer-events: none; background: #1c1917; color: #fafaf9; font-size: 12.5px; font-weight: 600; padding: 5px 9px; border-radius: 7px; white-space: nowrap; }
+
 @media (max-width: 1100px) { .main { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
+  .nav .l { display: none; }
+  .nav .s { display: inline; }
+  .nav a { padding: 0 8px; font-size: 14px; }
+  .nav .lucide { display: none; }
+  .hm .kw { min-width: 110px; max-width: 130px; font-size: 13.5px; }
   .iss-row { grid-template-columns: 22px minmax(0, 1fr) 16px; }
   .iss-meta { grid-column: 2; text-align: left; }
   .iss-meta br { display: none; }
@@ -198,8 +232,10 @@ a { color: inherit; text-decoration: none; }
   <div class="wrap tb">
     <a class="logo" href="#"><span class="logo-mark"><i data-lucide="radar"></i></span><span class="txt">이슈 키워드</span></a>
     <nav class="nav">
-      <a href="#" data-view="kw"><i data-lucide="flame"></i>이슈·키워드</a>
-      <a href="#articles" data-view="articles"><i data-lucide="newspaper"></i>전체 기사</a>
+      <a href="#" data-view="kw"><i data-lucide="flame"></i><span class="l">이슈·키워드</span><span class="s">이슈</span></a>
+      <a href="#hourly" data-view="hourly"><i data-lucide="clock-3"></i><span class="l">시간별 흐름</span><span class="s">시간별</span></a>
+      <a href="#longterm" data-view="longterm"><i data-lucide="calendar-range"></i><span class="l">장기 흐름</span><span class="s">장기</span></a>
+      <a href="#articles" data-view="articles"><i data-lucide="newspaper"></i><span class="l">전체 기사</span><span class="s">기사</span></a>
     </nav>
     <div class="tb-right">
       <span id="updated"><i data-lucide="clock"></i><span></span></span>
@@ -265,6 +301,56 @@ a { color: inherit; text-decoration: none; }
     </section>
   </section>
 
+  <!-- 시간별 키워드 흐름 화면 -->
+  <section id="view-hourly" hidden>
+    <div class="head">
+      <div>
+        <h1>시간별 키워드 흐름</h1>
+        <p>최근 24시간, 한 시간 단위로 어떤 키워드가 떠오르고 가라앉았는지. 칸이 진할수록 그 키워드가 가장 많이 나온 시간</p>
+      </div>
+      <div class="controls">
+        <div class="seg" id="hourlyUnit"><button data-unit="pairs">두 단어</button><button data-unit="words">한 단어</button></div>
+        <div class="seg" id="hourlySort"><button data-sort="n">많은 순</button><button data-sort="recent">최근 3시간 순</button><button data-sort="peak">떠오른 시각 순</button></div>
+      </div>
+    </div>
+    <div class="notice" id="hourlyNote" hidden><i data-lucide="info"></i><span></span></div>
+    <div class="catbar" id="hourlyCats"></div>
+    <section class="card hm-card">
+      <div class="hm-head"><h2 class="sec-title"><i data-lucide="clock-3"></i><span id="hourlyTitle"></span></h2></div>
+      <div class="hm-wrap"><table class="hm" id="hourlyTable"></table></div>
+      <div class="legend" id="hourlyLegend"></div>
+    </section>
+    <section class="card list-card">
+      <div class="list-head"><h2 class="sec-title"><i data-lucide="file-text"></i><span class="kw" id="hourlyKw"></span> 관련 기사</h2><small id="hourlyMeta"></small></div>
+      <ul class="arts" id="hourlyArts"><li class="state">키워드 이름이나 칸을 누르면 해당 기사가 나옴</li></ul>
+    </section>
+  </section>
+
+  <!-- 장기 키워드 흐름 화면 -->
+  <section id="view-longterm" hidden>
+    <div class="head">
+      <div>
+        <h1>장기 키워드 흐름</h1>
+        <p>최근 30일 동안 꾸준히 다뤄진 키워드. 하루 2건 이상·2개 매체 이상이면 그날 다룬 것으로 셈</p>
+      </div>
+      <div class="controls">
+        <div class="seg" id="longtermUnit"><button data-unit="pairs">두 단어</button><button data-unit="words">한 단어</button></div>
+        <div class="seg" id="longtermSort"><button data-sort="days">오래 유지된 순</button><button data-sort="n">많은 순</button></div>
+      </div>
+    </div>
+    <div class="notice" id="longtermNote" hidden><i data-lucide="info"></i><span></span></div>
+    <div class="catbar" id="longtermCats"></div>
+    <section class="card hm-card">
+      <div class="hm-head"><h2 class="sec-title"><i data-lucide="calendar-range"></i><span id="longtermTitle"></span></h2></div>
+      <div class="hm-wrap"><table class="hm" id="longtermTable"></table></div>
+      <div class="legend" id="longtermLegend"></div>
+    </section>
+    <section class="card list-card">
+      <div class="list-head"><h2 class="sec-title"><i data-lucide="file-text"></i><span class="kw" id="longtermKw"></span> 관련 기사</h2><small id="longtermMeta"></small></div>
+      <ul class="arts" id="longtermArts"><li class="state">키워드 이름이나 칸을 누르면 해당 기사가 나옴</li></ul>
+    </section>
+  </section>
+
   <!-- 전체 기사 화면 -->
   <section id="view-articles" hidden>
     <div class="head">
@@ -292,6 +378,7 @@ a { color: inherit; text-decoration: none; }
   </details>
 </main>
 
+<div id="tip" hidden></div>
 <script src="assets/wordcloud2.min.js"></script>
 <script src="assets/lucide.min.js"></script>
 <script>
@@ -525,11 +612,121 @@ function renderStatus() {
   $('feeds').innerHTML = r.feeds.map(x => `<div><span>${esc(x.cat)} · ${esc(x.src)}</span>${x.ok ? `<span class="ok">${x.items}건</span>` : `<span class="bad" title="${esc(x.error)}">실패</span>`}</div>`).join('');
 }
 
+/* 시간별·장기 흐름 (히트맵) */
+const flow = {
+  hourly: { cat: null, unit: 'pairs', sort: 'n', sel: null },
+  longterm: { cat: null, unit: 'words', sort: 'days', sel: null },
+};
+const BINS = ['#e0e7ff', '#c7d2fe', '#a5b4fc', '#6366f1', '#3730a3'];  // 남색 한 가지 색, 옅음→진함
+const EMPTY = '#efeadf';
+const binColor = (v, max) => v <= 0 ? EMPTY : BINS[Math.min(4, Math.floor(v / max * 5 - 1e-9))];
+
+function flowCols(key) {
+  if (key === 'hourly') {
+    const hs = S.hourly.hours;
+    return hs.map((h, i) => {
+      const hr = +h.slice(11, 13), nxt = hs[i + 1];
+      return { label: hr === 0 ? `${+h.slice(5, 7)}.${+h.slice(8, 10)}` : (hr % 3 === 0 ? `${hr}시` : ''), day: hr === 0,
+               tip: `${+h.slice(5, 7)}.${+h.slice(8, 10)} ${hr}시`, from: `${h}:00`, to: nxt ? `${nxt}:00` : '', have: true };
+    });
+  }
+  const ds = S.longterm.dates;
+  return ds.map((d, i) => ({ label: (i % 3 === (ds.length - 1) % 3) ? `${+d.slice(5, 7)}.${+d.slice(8, 10)}` : '', day: false,
+    tip: `${+d.slice(5, 7)}.${+d.slice(8, 10)}`, from: `${d}T00:00`, to: ds[i + 1] ? `${ds[i + 1]}T00:00` : '', have: S.longterm.have[i] }));
+}
+
+function flowRows(key) {
+  const f = flow[key], src = key === 'hourly' ? S.hourly : S.longterm;
+  const rows = [...((src.data[f.cat] || {})[f.unit] || [])];
+  const vals = r => r.h || r.d;
+  const recent = r => vals(r).slice(-3).reduce((a, b) => a + b, 0);
+  const peak = r => vals(r).indexOf(Math.max(...vals(r)));
+  if (f.sort === 'n') rows.sort((a, b) => b.n - a.n);
+  if (f.sort === 'recent') rows.sort((a, b) => recent(b) - recent(a) || b.n - a.n);
+  if (f.sort === 'peak') rows.sort((a, b) => peak(b) - peak(a) || b.n - a.n);
+  if (f.sort === 'days') rows.sort((a, b) => b.days - a.days || b.n - a.n);
+  return rows;
+}
+
+function renderFlow(key) {
+  const f = flow[key];
+  f.cat ??= S.cats[0];
+  const on = (id, attr, v) => $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset[attr] === v));
+  $(key + 'Cats').innerHTML = S.cats.map(c => `<button data-cat="${esc(c)}">${esc(c)}</button>`).join('');
+  $(key + 'Cats').querySelectorAll('button').forEach(b => b.onclick = () => { f.cat = b.dataset.cat; f.sel = null; renderFlow(key); });
+  $(key + 'Unit').querySelectorAll('button').forEach(b => b.onclick = () => { f.unit = b.dataset.unit; f.sel = null; renderFlow(key); });
+  $(key + 'Sort').querySelectorAll('button').forEach(b => b.onclick = () => { f.sort = b.dataset.sort; renderFlow(key); });
+  on(key + 'Cats', 'cat', f.cat); on(key + 'Unit', 'unit', f.unit); on(key + 'Sort', 'sort', f.sort);
+
+  const cols = flowCols(key), rows = flowRows(key), hourlyView = key === 'hourly';
+  const note = $(key + 'Note');
+  if (!hourlyView) {
+    note.hidden = S.longterm.dataDays >= 14;
+    note.querySelector('span').textContent = `현재 ${S.longterm.dataDays}일치 자료만 있음. 날마다 쌓여 2주 이상이면 '오래 유지되는 키워드'가 또렷해짐 (빗금 칸 = 자료 없는 날)`;
+  }
+  $(key + 'Title').textContent = `${f.cat} · ${hourlyView ? '최근 24시간' : '최근 30일'} · ${f.unit === 'pairs' ? '두 단어' : '한 단어'}`;
+  const extraHead = hourlyView ? '<th class="num">합계</th><th class="num">최근 3시간</th>' : '<th class="num">다룬 날</th><th class="num">연속</th><th class="num">합계</th>';
+  const head = `<thead><tr><th class="kw"></th>${cols.map(c => `<th class="c${c.day ? ' day' : ''}"><span>${c.label}</span></th>`).join('')}${extraHead}</tr></thead>`;
+  const body = rows.map((r, ri) => {
+    const v = r.h || r.d, max = Math.max(1, ...v);
+    const cells = v.map((x, i) => cols[i].have
+      ? `<td class="c${f.sel && f.sel.w === r.w && f.sel.col === i ? ' sel' : ''}" data-r="${ri}" data-i="${i}" data-v="${x}" style="background:${binColor(x, max)}"></td>`
+      : `<td class="c nd" data-r="${ri}" data-i="${i}" data-v="-1"></td>`).join('');
+    const extra = hourlyView
+      ? `<td class="num"><b>${r.n}</b>건</td><td class="num">${v.slice(-3).reduce((a, b) => a + b, 0)}건</td>`
+      : `<td class="num"><b>${r.days}</b>일</td><td class="num">${r.streak}일</td><td class="num">${r.n}건</td>`;
+    return `<tr class="${f.sel && f.sel.w === r.w ? 'on' : ''}"><td class="kw" data-r="${ri}" title="${esc(r.w)}"><i>${ri + 1}</i>${esc(r.w)}</td>${cells}${extra}</tr>`;
+  }).join('');
+  $(key + 'Table').innerHTML = rows.length ? head + `<tbody>${body}</tbody>` : '<tbody><tr><td class="state" style="border:0">표시할 키워드 없음</td></tr></tbody>';
+  $(key + 'Legend').innerHTML = `적음 ${BINS.map(c => `<i style="background:${c}"></i>`).join('')} 많음 · 줄마다 가장 많은 칸 기준` +
+    `<span class="gap"></span><i style="background:${EMPTY}"></i> 0건` + (hourlyView ? '' : `<span class="gap"></span><i style="background:repeating-linear-gradient(135deg, transparent 0 3px, #e8e2d4 3px 4px)"></i> 자료 없음`);
+
+  const tbl = $(key + 'Table'), tip = $('tip');
+  tbl.onmousemove = e => {
+    const td = e.target.closest('td.c');
+    if (!td) { tip.hidden = true; return; }
+    const r = rows[+td.dataset.r], c = cols[+td.dataset.i], v = +td.dataset.v;
+    tip.textContent = `${r.w} · ${c.tip} · ${v < 0 ? '자료 없음' : v + '건'}`;
+    tip.hidden = false;
+    tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + 'px';
+    tip.style.top = (e.clientY + 14) + 'px';
+  };
+  tbl.onmouseleave = () => { tip.hidden = true; };
+  tbl.onclick = e => {
+    const td = e.target.closest('td.c, td.kw');
+    if (!td || td.dataset.v === '-1') return;
+    const r = rows[+td.dataset.r], i = td.classList.contains('c') ? +td.dataset.i : null;
+    f.sel = { w: r.w, col: i };
+    tbl.querySelectorAll('td.c.sel').forEach(x => x.classList.remove('sel'));
+    tbl.querySelectorAll('tr.on').forEach(x => x.classList.remove('on'));
+    td.closest('tr').classList.add('on');
+    if (i != null) td.classList.add('sel');
+    loadFlowArts(key, r, i == null ? null : cols[i], cols);
+  };
+  if (f.sel) { const r = rows.find(x => x.w === f.sel.w); if (r) loadFlowArts(key, r, f.sel.col == null ? null : cols[f.sel.col], cols); }
+  else { $(key + 'Kw').textContent = ''; $(key + 'Meta').textContent = ''; $(key + 'Arts').innerHTML = '<li class="state">키워드 이름이나 칸을 누르면 해당 기사가 나옴</li>'; }
+}
+
+async function loadFlowArts(key, r, col, cols) {
+  const f = flow[key], ul = $(key + 'Arts');
+  $(key + 'Kw').textContent = r.w;
+  $(key + 'Meta').textContent = `${f.cat} · ${col ? col.tip : (key === 'hourly' ? '최근 24시간' : '최근 30일')}`;
+  ul.innerHTML = '<li class="state">불러오는 중</li>';
+  try {
+    const j = await fetchArticles({ cat: f.cat, kw: r.w, from: col ? col.from : cols[0].from, to: col ? col.to : '', limit: 50 });
+    ul.innerHTML = j.rows.map(a => rowHtml(a, r.w)).join('') || '<li class="state">기사 없음</li>';
+  } catch (e) { ul.innerHTML = `<li class="state">기사를 불러오지 못함: ${esc(e.message)}</li>`; }
+}
+
+const VIEWS = { '#articles': 'articles', '#hourly': 'hourly', '#longterm': 'longterm' };
 function route() {
-  const v = location.hash === '#articles' ? 'articles' : 'kw';
+  const v = VIEWS[location.hash] || 'kw';
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.view === v));
-  $('view-kw').hidden = v !== 'kw'; $('view-articles').hidden = v !== 'articles';
-  if (v === 'kw') renderKw(); else if (!allPage.offset) searchAll(true);
+  ['kw', 'hourly', 'longterm', 'articles'].forEach(x => { $('view-' + x).hidden = x !== v; });
+  $('tip').hidden = true;
+  if (v === 'kw') renderKw();
+  else if (v === 'hourly' || v === 'longterm') renderFlow(v);
+  else if (!allPage.offset) searchAll(true);
   icons();
 }
 $('logout').onclick = async e => { e.preventDefault(); await fetch('/api/logout', { method: 'POST' }); location.reload(); };
