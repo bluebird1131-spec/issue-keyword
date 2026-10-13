@@ -278,6 +278,7 @@ table.hm { border-collapse: separate; border-spacing: 2px; }
         <div class="cloud-head">
           <h2 class="sec-title"><i data-lucide="cloud"></i><span id="cloudTitle"></span></h2>
           <div class="seg sm" id="unitSeg">
+            <button data-unit="triples">세 단어</button>
             <button data-unit="pairs">두 단어</button>
             <button data-unit="words">한 단어</button>
           </div>
@@ -309,7 +310,7 @@ table.hm { border-collapse: separate; border-spacing: 2px; }
         <p>최근 24시간, 한 시간 단위로 어떤 키워드가 떠오르고 가라앉았는지. 칸이 진할수록 그 키워드가 가장 많이 나온 시간</p>
       </div>
       <div class="controls">
-        <div class="seg" id="hourlyUnit"><button data-unit="pairs">두 단어</button><button data-unit="words">한 단어</button></div>
+        <div class="seg" id="hourlyUnit"><button data-unit="triples">세 단어</button><button data-unit="pairs">두 단어</button><button data-unit="words">한 단어</button></div>
         <div class="seg" id="hourlySort"><button data-sort="n">많은 순</button><button data-sort="recent">최근 3시간 순</button><button data-sort="peak">떠오른 시각 순</button></div>
       </div>
     </div>
@@ -334,7 +335,7 @@ table.hm { border-collapse: separate; border-spacing: 2px; }
         <p>최근 30일 동안 꾸준히 다뤄진 키워드. 하루 2건 이상·2개 매체 이상이면 그날 다룬 것으로 셈</p>
       </div>
       <div class="controls">
-        <div class="seg" id="longtermUnit"><button data-unit="pairs">두 단어</button><button data-unit="words">한 단어</button></div>
+        <div class="seg" id="longtermUnit"><button data-unit="triples">세 단어</button><button data-unit="pairs">두 단어</button><button data-unit="words">한 단어</button></div>
         <div class="seg" id="longtermSort"><button data-sort="days">오래 유지된 순</button><button data-sort="n">많은 순</button></div>
       </div>
     </div>
@@ -512,14 +513,14 @@ function renderRank() {
 }
 
 function drawCloud() {
-  const cv = $('cloud'), pairs = st.unit === 'pairs', l = list(st.cat).slice(0, pairs ? 40 : 50);
+  const cv = $('cloud'), pairs = st.unit !== 'words', tri = st.unit === 'triples', l = list(st.cat).slice(0, tri ? 30 : pairs ? 40 : 50);
   $('cloudTitle').textContent = `${st.cat} 키워드 · ${period().label}`;
   cv.hidden = !l.length; $('cloudEmpty').hidden = !!l.length;
   if (!l.length) { $('cloudEmpty').textContent = '표시할 단어 없음'; return; }
   const r = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
   cv.width = w * r; cv.height = h * r;
   const ns = l.map(k => k.n), max = Math.max(...ns), min = Math.min(...ns);
-  const big = pairs ? Math.min(54, w / 10) : Math.min(80, w / 6.5), small = pairs ? 14 : 15;
+  const big = tri ? Math.min(42, w / 14) : pairs ? Math.min(54, w / 10) : Math.min(80, w / 6.5), small = pairs ? 14 : 15;
   const size = n => small + (big - small) * Math.sqrt((n - min) / Math.max(1, max - min));
   const idx = Object.fromEntries(l.map((k, i) => [k.w, i]));
   WordCloud(cv, {
@@ -617,6 +618,7 @@ const flow = {
   hourly: { cat: null, unit: 'pairs', sort: 'n', sel: null },
   longterm: { cat: null, unit: 'words', sort: 'days', sel: null },
 };
+const UNIT_LABEL = { words: '한 단어', pairs: '두 단어', triples: '세 단어' };
 const BINS = ['#e0e7ff', '#c7d2fe', '#a5b4fc', '#6366f1', '#3730a3'];  // 남색 한 가지 색, 옅음→진함
 const EMPTY = '#efeadf';
 const binColor = (v, max) => v <= 0 ? EMPTY : BINS[Math.min(4, Math.floor(v / max * 5 - 1e-9))];
@@ -664,7 +666,7 @@ function renderFlow(key) {
     note.hidden = S.longterm.dataDays >= 14;
     note.querySelector('span').textContent = `현재 ${S.longterm.dataDays}일치 자료만 있음. 날마다 쌓여 2주 이상이면 '오래 유지되는 키워드'가 또렷해짐 (빗금 칸 = 자료 없는 날)`;
   }
-  $(key + 'Title').textContent = `${f.cat} · ${hourlyView ? '최근 24시간' : '최근 30일'} · ${f.unit === 'pairs' ? '두 단어' : '한 단어'}`;
+  $(key + 'Title').textContent = `${f.cat} · ${hourlyView ? '최근 24시간' : '최근 30일'} · ${UNIT_LABEL[f.unit]}`;
   const extraHead = hourlyView ? '<th class="num">합계</th><th class="num">최근 3시간</th>' : '<th class="num">다룬 날</th><th class="num">연속</th><th class="num">합계</th>';
   const head = `<thead><tr><th class="kw"></th>${cols.map(c => `<th class="c${c.day ? ' day' : ''}"><span>${c.label}</span></th>`).join('')}${extraHead}</tr></thead>`;
   const body = rows.map((r, ri) => {

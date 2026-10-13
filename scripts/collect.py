@@ -9,7 +9,7 @@ GitHub Actions(collect.yml)가 매시간 실행. 저장·조회는 모두 Worker
   REKEY         1이면 기간 안 기사 키워드를 현재 설정(불용어·사전)으로 다시 계산해 덮어씀
   DRY           1이면 저장 없이 결과만 snapshot.local.json으로
 """
-import hashlib, html, json, math, os, re, sys, time, collections
+import hashlib, html, itertools, json, math, os, re, sys, time, collections
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -201,8 +201,10 @@ def load_daily(since_date):
 
 
 # ---------- 집계 ----------
-# 단어(w)와 두 단어 묶음(p)을 같은 방식으로 셈. 묶음 키는 가나다순 "a b", 화면 표시는 제목에 많이 나온 순서
+# 단어(w)·두 단어(p)·세 단어(t) 묶음을 같은 방식으로 셈. 묶음 키는 가나다순 "a b", 화면 표시는 제목에 많이 나온 순서
 PAIR_WORDS = 8  # 제목당 앞쪽 키워드 몇 개까지 짝을 지을지
+TRI_WORDS = 6   # 세 단어 묶음은 앞쪽 6개까지 (조합 수가 빨리 늘어서)
+KINDS = ("w", "p", "t")
 
 
 def pair_keys(kws):
@@ -213,9 +215,13 @@ def pair_keys(kws):
             yield " ".join(sorted((a, b))), f"{a} {b}"
 
 
+def tri_keys(kws):
+    for comb in itertools.combinations(kws[:TRI_WORDS], 3):
+        yield " ".join(sorted(comb)), " ".join(comb)
+
+
 def new_stat():
-    return {"N": 0, "w": [collections.Counter(), collections.defaultdict(set), collections.defaultdict(set)],
-            "p": [collections.Counter(), collections.defaultdict(set), collections.defaultdict(set)]}
+    return {"N": 0, **{k: [collections.Counter(), collections.defaultdict(set), collections.defaultdict(set)] for k in KINDS}}
 
 
 def stats_from_arts(arts):
@@ -231,16 +237,30 @@ def stats_from_arts(arts):
         for k, disp in pair_keys(kws):
             r["p"][0][k] += 1; r["p"][1][k].add(a["src"]); r["p"][2][k].add(i)
             order[k][disp] += 1
+    # 세 단어: 조합이 많아 먼저 개수만 세고, 2건 이상 나온 묶음만 매체·기사 집합을 만듦 (메모리 절약)
+    tc = collections.Counter()
+    for a in arts:
+        if a["cat"] in res:
+            tc.update((a["cat"], k) for k, _ in tri_keys(a["kws"].split()))
+    for i, a in enumerate(arts):
+        if a["cat"] not in res:
+            continue
+        r = res[a["cat"]]
+        for k, disp in tri_keys(a["kws"].split()):
+            if tc[(a["cat"], k)] >= 2:
+                r["t"][0][k] += 1; r["t"][1][k].add(a["src"]); r["t"][2][k].add(i)
+                order[k][disp] += 1
     return res, order
 
 
 def daily_body(arts):
     st, _ = stats_from_arts(arts)
-    body = {"total": {}, "w": {}, "p": {}}
+    body = {"total": {}, "w": {}, "p": {}, "t": {}}
     for c, r in st.items():
         body["total"][c] = r["N"]
         body["w"][c] = {w: [k, "|".join(sorted(r["w"][1][w]))] for w, k in r["w"][0].most_common(DAILY_KEEP)}
-        body["p"][c] = {w: [k, "|".join(sorted(r["p"][1][w]))] for w, k in r["p"][0].most_common(PAIR_KEEP) if k >= 2}
+        for kind in ("p", "t"):
+            body[kind][c] = {w: [k, "|".join(sorted(r[kind][1][w]))] for w, k in r[kind][0].most_common(PAIR_KEEP) if k >= 2}
     return body
 
 
@@ -250,12 +270,12 @@ def merge_days(days):
     for b in days:
         for c in CATS:
             res[c]["N"] += b["total"].get(c, 0)
-            for kind in ("w", "p"):
+            for kind in KINDS:
                 for w, (k, s) in b.get(kind, {}).get(c, {}).items():
                     res[c][kind][0][w] += k
                     res[c][kind][1][w].update(s.split("|"))
     for c in CATS:
-        for kind in ("w", "p"):
+        for kind in KINDS:
             res[c][kind][2] = None
     return res
 
@@ -285,6 +305,8 @@ def rank(n_all, kind_stat, base, trend_of, disp=lambda k: k, dedupe=False):
                 if any(used[w] >= 2 for w in ws):
                     continue
                 if len(ws) == 2 and adj[ws[0]] & adj[ws[1]]:  # 홍라희-이재용, 이재용-증여 다음의 홍라희-증여 같은 삼각 중복
+                    continue
+                if len(ws) == 3 and any(len(set(ws) & set(o.split())) >= 2 for o in out):  # 굴종 태도 지양 / 굴종 사대 지양
                     continue
                 if sets is not None:
                     sk = sets[k]
@@ -371,14 +393,15 @@ def issues(arts, idx, base, n_all):
 
 
 def hourly(arts, last24):
-    """시간별 흐름: 최근 24시간 상위 단어·두 단어가 시간대별로 몇 건씩 나왔는지"""
+    """시간별 흐름: 최근 24시간 상위 단어·두 단어·세 단어가 시간대별로 몇 건씩 나왔는지"""
     end = NOW.replace(minute=0, second=0, microsecond=0)
     hours = [fmt(end - timedelta(hours=HOURS - 1 - i))[:13] for i in range(HOURS)]
     pos = {h: i for i, h in enumerate(hours)}
     res = {"hours": hours, "data": {}}
     for c in CATS:
         rows = {"words": {k["w"]: k for k in last24[c]["words"]["top"][:HOUR_ROWS]},
-                "pairs": {" ".join(sorted(k["w"].split())): k for k in last24[c]["pairs"]["top"][:HOUR_ROWS]}}
+                "pairs": {" ".join(sorted(k["w"].split())): k for k in last24[c]["pairs"]["top"][:HOUR_ROWS]},
+                "triples": {" ".join(sorted(k["w"].split())): k for k in last24[c]["triples"]["top"][:HOUR_ROWS]}}
         h = {kind: {k: [0] * HOURS for k in rows[kind]} for kind in rows}
         for a in arts:
             if a["cat"] != c or a["pub"][:13] not in pos:
@@ -390,6 +413,9 @@ def hourly(arts, last24):
             for k in {k for k, _ in pair_keys(kws)}:
                 if k in h["pairs"]:
                     h["pairs"][k][i] += 1
+            for k in {k for k, _ in tri_keys(kws)}:
+                if k in h["triples"]:
+                    h["triples"][k][i] += 1
         res["data"][c] = {kind: [{"w": it["w"], "n": sum(h[kind][k]), "m": it["m"], "h": h[kind][k]} for k, it in rows[kind].items()]
                           for kind in rows}
     return res
@@ -407,8 +433,8 @@ def longterm(daily, day, disp):
     res = {"dates": dates, "have": [full_day(daily, d) or d == dates[-1] for d in dates], "dataDays": len(have), "data": {}}
     for c in CATS:
         res["data"][c] = {}
-        for kind in ("words", "pairs"):
-            src = "w" if kind == "words" else "p"
+        for kind in ("words", "pairs", "triples"):
+            src = {"words": "w", "pairs": "p", "triples": "t"}[kind]
             series = collections.defaultdict(lambda: [0] * LONG_DAYS)
             on = collections.defaultdict(lambda: [False] * LONG_DAYS)
             for i, d in enumerate(dates):
@@ -434,7 +460,13 @@ def longterm(daily, day, disp):
                     if used[a] < 2 and used[b] < 2 and not (adj[a] & adj[b]):
                         keep.append(k); used.update((a, b)); adj[a].add(b); adj[b].add(a)
                 ranked = keep
-            res["data"][c][kind] = [{"w": disp(k) if kind == "pairs" else k, "days": present[k], "streak": streak(k),
+            if kind == "triples":  # 이미 고른 묶음과 두 단어 이상 겹치면 제외
+                keep = []
+                for k in ranked:
+                    if not any(len(set(k.split()) & set(o.split())) >= 2 for o in keep):
+                        keep.append(k)
+                ranked = keep
+            res["data"][c][kind] = [{"w": k if kind == "words" else disp(k), "days": present[k], "streak": streak(k),
                                      "n": sum(series[k]), "d": series[k]} for k in ranked[:LONG_ROWS]]
     return res
 
@@ -538,7 +570,10 @@ def main():
             pb = {"N": b["N"], "cnt": b["p"][0]} if b else None
             w_top, w_rise = rank(r["N"], r["w"], wb, trend_fn(c, "w"))
             p_top, p_rise = rank(r["N"], r["p"], pb, trend_fn(c, "p"), disp, dedupe=True)
-            blk = {"count": r["N"], "words": {"top": w_top, "rise": w_rise}, "pairs": {"top": p_top, "rise": p_rise}}
+            tb = {"N": b["N"], "cnt": b["t"][0]} if b else None
+            t_top, t_rise = rank(r["N"], r["t"], tb, trend_fn(c, "t"), disp, dedupe=True)
+            blk = {"count": r["N"], "words": {"top": w_top, "rise": w_rise}, "pairs": {"top": p_top, "rise": p_rise},
+                   "triples": {"top": t_top, "rise": t_rise}}
             if from_arts:
                 i_top, i_rise = issues(sub, by_cat[c], pb, r["N"])
                 blk["issues"] = {"top": i_top, "rise": i_rise}
