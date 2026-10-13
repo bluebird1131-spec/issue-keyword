@@ -1,4 +1,4 @@
-"""분야별 언론사 RSS 수집 → 키워드 추출 → Cloudflare D1 저장 → 기간별 키워드 순위(snapshot) 생성
+"""분야별 언론사 RSS 수집 → 키워드 추출 → Cloudflare D1 저장 → 기간별 이슈·두 단어·단어 순위(snapshot) 생성
 
 GitHub Actions(collect.yml)가 매시간 실행. 저장·조회는 모두 Worker API(issue-keyword) 경유.
 
@@ -30,8 +30,11 @@ NOW = datetime.now(KST)
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
 
 PERIODS = [("24h", "최근 24시간", None), ("3d", "3일", 3), ("7d", "7일", 7), ("30d", "30일", 30)]
-TOP_N, RISE_N, TREND_DAYS, BASE_DAYS = 60, 40, 14, 14
-DAILY_KEEP = 400  # 하루·분야별로 저장할 단어 수 (많이 나온 순)
+TOP_N, RISE_N, TREND_DAYS, BASE_DAYS, TREND_ITEMS = 50, 40, 14, 14, 30
+DAILY_KEEP, PAIR_KEEP = 400, 300  # 하루·분야별로 저장할 단어·두 단어 묶음 수 (많이 나온 순)
+LOAD_DAYS = 7          # 이슈 묶기·3일·7일 순위는 최근 7일 기사로 직접 계산 (30일은 일별 집계 합산)
+CLUSTER_TH = 0.4       # 같은 이슈로 볼 공통 키워드 비율 (드문 단어 가중)
+ISSUE_N, ISSUE_IDS = 20, 40
 
 
 def fmt(dt):
@@ -195,63 +198,173 @@ def load_daily(since_date):
 
 
 # ---------- 집계 ----------
-def count(arts):
-    """[기사] → {분야: (기사 수, Counter 단어→기사 수, 단어→매체 집합)}"""
-    res = {c: [0, collections.Counter(), collections.defaultdict(set)] for c in CATS}
-    for a in arts:
+# 단어(w)와 두 단어 묶음(p)을 같은 방식으로 셈. 묶음 키는 가나다순 "a b", 화면 표시는 제목에 많이 나온 순서
+PAIR_WORDS = 8  # 제목당 앞쪽 키워드 몇 개까지 짝을 지을지
+
+
+def pair_keys(kws):
+    ks = kws[:PAIR_WORDS]
+    for i in range(len(ks)):
+        for j in range(i + 1, len(ks)):
+            a, b = ks[i], ks[j]
+            yield " ".join(sorted((a, b))), f"{a} {b}"
+
+
+def new_stat():
+    return {"N": 0, "w": [collections.Counter(), collections.defaultdict(set), collections.defaultdict(set)],
+            "p": [collections.Counter(), collections.defaultdict(set), collections.defaultdict(set)]}
+
+
+def stats_from_arts(arts):
+    """[기사] → {분야: {N, w: [기사 수, 매체 집합, 기사 번호 집합], p: 같은 구조}} + 묶음 표시 순서 투표"""
+    res, order = {c: new_stat() for c in CATS}, collections.defaultdict(collections.Counter)
+    for i, a in enumerate(arts):
         if a["cat"] not in res:
             continue
-        r = res[a["cat"]]
-        r[0] += 1
-        for w in a["kws"].split():
-            r[1][w] += 1
-            r[2][w].add(a["src"])
-    return res
+        r, kws = res[a["cat"]], a["kws"].split()
+        r["N"] += 1
+        for w in kws:
+            r["w"][0][w] += 1; r["w"][1][w].add(a["src"]); r["w"][2][w].add(i)
+        for k, disp in pair_keys(kws):
+            r["p"][0][k] += 1; r["p"][1][k].add(a["src"]); r["p"][2][k].add(i)
+            order[k][disp] += 1
+    return res, order
 
 
 def daily_body(arts):
-    body = {"total": {}, "w": {}}
-    for c, (n, cnt, srcs) in count(arts).items():
-        body["total"][c] = n
-        body["w"][c] = {w: [k, "|".join(sorted(srcs[w]))] for w, k in cnt.most_common(DAILY_KEEP)}
+    st, _ = stats_from_arts(arts)
+    body = {"total": {}, "w": {}, "p": {}}
+    for c, r in st.items():
+        body["total"][c] = r["N"]
+        body["w"][c] = {w: [k, "|".join(sorted(r["w"][1][w]))] for w, k in r["w"][0].most_common(DAILY_KEEP)}
+        body["p"][c] = {w: [k, "|".join(sorted(r["p"][1][w]))] for w, k in r["p"][0].most_common(PAIR_KEEP) if k >= 2}
     return body
 
 
 def merge_days(days):
-    """일별 집계 여러 개 → {분야: (기사 수, Counter, 단어→매체 집합)}"""
-    res = {c: [0, collections.Counter(), collections.defaultdict(set)] for c in CATS}
+    """일별 집계 여러 개 → stats_from_arts 와 같은 구조 (기사 번호 집합은 없음)"""
+    res = {c: new_stat() for c in CATS}
     for b in days:
         for c in CATS:
-            res[c][0] += b["total"].get(c, 0)
-            for w, (k, s) in b["w"].get(c, {}).items():
-                res[c][1][w] += k
-                res[c][2][w].update(s.split("|"))
+            res[c]["N"] += b["total"].get(c, 0)
+            for kind in ("w", "p"):
+                for w, (k, s) in b.get(kind, {}).get(c, {}).items():
+                    res[c][kind][0][w] += k
+                    res[c][kind][1][w].update(s.split("|"))
+    for c in CATS:
+        for kind in ("w", "p"):
+            res[c][kind][2] = None
     return res
 
 
-def rank(cur, base, trend_of):
-    """현재 기간 집계 + 비교 기간 집계 → (많이 다룬 순위, 급상승 순위)"""
-    n_all, cnt, srcs = cur
-    b_all, b_cnt = (base[0], base[1]) if base else (0, {})
+def rank(n_all, kind_stat, base, trend_of, disp=lambda k: k, dedupe=False):
+    """현재 집계 + 비교 기간 집계({N, cnt}) → (많이 다룬 순위, 급상승 순위). dedupe=같은 기사들을 가리키는 묶음은 하나만"""
+    cnt, srcs, sets = kind_stat
+    b_all, b_cnt = (base["N"], base["cnt"]) if base else (0, {})
 
-    def item(w):
-        k, m = cnt[w], len(srcs[w])
-        it = {"w": w, "n": k, "m": m, "t": trend_of(w)}
+    def ratio(k):
+        exp = b_cnt.get(k, 0) / b_all * n_all
+        return (cnt[k] + 1) / (exp + 1), (cnt[k] - exp) / math.sqrt(exp + 1)
+
+    def item(k, i):
+        it = {"w": disp(k), "n": cnt[k], "m": len(srcs[k])}
+        if i < TREND_ITEMS:
+            it["t"] = trend_of(k)
         if b_all:
-            exp = b_cnt.get(w, 0) / b_all * n_all
-            it["r"] = None if b_cnt.get(w, 0) == 0 else round((k + 1) / (exp + 1), 1)
+            it["r"] = None if not b_cnt.get(k) else round(ratio(k)[0], 1)
         return it
 
-    cand = [w for w in cnt if len(srcs[w]) >= 2]
-    top = sorted(cand, key=lambda w: (-(cnt[w] * (1 + len(srcs[w]) / 4)), w))[:TOP_N]
+    def pick(keys, limit):
+        out, used, csets, adj = [], collections.Counter(), [], collections.defaultdict(set)
+        for k in keys:
+            if dedupe:
+                ws = k.split()
+                if any(used[w] >= 2 for w in ws):
+                    continue
+                if len(ws) == 2 and adj[ws[0]] & adj[ws[1]]:  # 홍라희-이재용, 이재용-증여 다음의 홍라희-증여 같은 삼각 중복
+                    continue
+                if sets is not None:
+                    sk = sets[k]
+                    if any(len(sk & c) >= 0.6 * len(sk) for c in csets):
+                        continue
+                    csets.append(sk)
+                if len(ws) == 2:
+                    adj[ws[0]].add(ws[1]); adj[ws[1]].add(ws[0])
+                used.update(ws)
+            out.append(k)
+            if len(out) >= limit:
+                break
+        return out
+
+    cand = [k for k in cnt if len(srcs[k]) >= 2 and cnt[k] >= 2]
+    top = pick(sorted(cand, key=lambda k: (-(cnt[k] * (1 + len(srcs[k]) / 4)), k)), TOP_N)
     rise = None
     if b_all:
-        def z(w):
-            exp = b_cnt.get(w, 0) / b_all * n_all
-            return (cnt[w] - exp) / math.sqrt(exp + 1)
-        rc = [w for w in cand if cnt[w] >= 3 and (cnt[w] + 1) / (b_cnt.get(w, 0) / b_all * n_all + 1) >= 2]
-        rise = [item(w) for w in sorted(rc, key=lambda w: (-z(w), w))[:RISE_N]]
-    return [item(w) for w in top], rise
+        rc = [k for k in cand if cnt[k] >= 3 and ratio(k)[0] >= 2]
+        rise = [item(k, i) for i, k in enumerate(pick(sorted(rc, key=lambda k: (-ratio(k)[1], k)), RISE_N))]
+    return [item(k, i) for i, k in enumerate(top)], rise
+
+
+def issues(arts, idx, base, n_all):
+    """같은 사건을 다룬 기사 묶기: 드문 단어(사람·사건명)에 가중치를 둔 공통 키워드 비율이 기준 이상이면 같은 이슈"""
+    items = [i for i in idx if len(arts[i]["kws"].split()) >= 2]
+    kset = {i: set(arts[i]["kws"].split()) for i in items}
+    N = max(1, len(items))
+    df = collections.Counter(w for i in items for w in kset[i])
+    idf = {w: math.log(N / c) + 0.1 for w, c in df.items()}
+    wsum = {i: sum(idf[w] for w in kset[i]) for i in items}
+    par = {i: i for i in items}
+
+    def find(x):
+        while par[x] != x:
+            par[x] = par[par[x]]
+            x = par[x]
+        return x
+
+    bucket = collections.defaultdict(list)
+    for i in items:
+        for k, _ in pair_keys(arts[i]["kws"].split()):
+            bucket[k].append(i)
+    seen = set()
+    for lst in bucket.values():
+        if len(lst) > 400:  # 너무 흔한 짝은 후보에서 제외 (속도)
+            continue
+        for x in range(len(lst)):
+            for y in range(x + 1, len(lst)):
+                i, j = lst[x], lst[y]
+                if (i, j) in seen:
+                    continue
+                seen.add((i, j))
+                common = kset[i] & kset[j]
+                if len(common) >= 2 and sum(idf[w] for w in common) / min(wsum[i], wsum[j]) >= CLUSTER_TH:
+                    par[find(i)] = find(j)
+    groups = collections.defaultdict(list)
+    for i in items:
+        groups[find(i)].append(i)
+
+    b_all, b_cnt = (base["N"], base["cnt"]) if base else (0, {})
+    out = []
+    for g in groups.values():
+        srcs = {arts[i]["src"] for i in g}
+        if len(srcs) < 2:
+            continue
+        kc = collections.Counter(w for i in g for w in kset[i])
+        top = [w for w, c in kc.most_common(4) if c >= 2][:3] or [w for w, _ in kc.most_common(2)]
+        rep = max(g, key=lambda i: (sum(kc[w] for w in kset[i]) / (len(kset[i]) + 1), arts[i]["pub"]))
+        g.sort(key=lambda i: arts[i]["pub"], reverse=True)
+        it = {"t": arts[rep]["title"], "u": arts[rep]["url"], "s": arts[rep]["src"], "k": top, "n": len(g), "m": len(srcs),
+              "last": arts[g[0]]["pub"], "ids": [arts[i]["id"] for i in g[:ISSUE_IDS]]}
+        if b_all and len(top) >= 2:
+            k = " ".join(sorted(top[:2]))
+            exp = b_cnt.get(k, 0) / b_all * n_all
+            it["r"] = None if not b_cnt.get(k) else round((len(g) + 1) / (exp + 1), 1)
+        out.append(it)
+    top = sorted(out, key=lambda x: (-x["m"] * math.log(x["n"] + 1), x["t"]))[:ISSUE_N]
+    rise = None
+    if b_all:
+        rc = [x for x in out if x["n"] >= 2 and (x.get("r") is None or x["r"] >= 2)]
+        rise = sorted(rc, key=lambda x: (-x["m"] * min(x.get("r") or 5, 5) * math.log(x["n"] + 1), x["t"]))[:ISSUE_N]
+    return top, rise
 
 
 def main():
@@ -261,6 +374,7 @@ def main():
     today = NOW.date()
     since_date = today - timedelta(days=DAYS - 1)
     since = f"{since_date}T00:00"
+    load_since = min(since, f"{today - timedelta(days=LOAD_DAYS - 1)}T00:00")  # 이슈 묶기·3일·7일용 최근 7일
 
     jobs = [(c, s, u) for c, lst in FEEDS.items() for s, u in lst]
     with ThreadPoolExecutor(8) as ex:
@@ -272,7 +386,7 @@ def main():
         if not s["ok"]:
             print(f"  ::warning::{s['cat']} {s['src']} 실패 — {s['error']}")
 
-    existing = [] if DRY else load_recent(since)
+    existing = [] if DRY else load_recent(load_since)
     ids = {a["id"] for a in existing}
     tkeys = {tkey(a["cat"], a["title"]) for a in existing}
     new = []
@@ -296,40 +410,67 @@ def main():
                 api("POST", "/api/rekey", json={"articles": [{"id": a["id"], "kws": a["kws"]} for a in existing[i:i + 500]]})
 
     arts = existing + new
-    # 일별 집계: 이번에 다시 본 날짜(since_date~오늘)만 새로 만들고, 그 전 날짜는 저장된 것 사용
+    # 일별 집계: 이번에 다시 본 날짜만 새로 만들고(rekey 면 불러온 기간 전체), 그 전 날짜는 저장된 것 사용
     by_day = collections.defaultdict(list)
     for a in arts:
         by_day[a["pub"][:10]].append(a)
-    fresh = {str(since_date + timedelta(days=i)): daily_body(by_day.get(str(since_date + timedelta(days=i)), [])) for i in range(DAYS)}
-    stored = {} if DRY else load_daily(str(today - timedelta(days=30 + BASE_DAYS)))
+    redo_from = min(since_date, today - timedelta(days=LOAD_DAYS - 1)) if REKEY else since_date
+    redo = [str(redo_from + timedelta(days=i)) for i in range((today - redo_from).days + 1)]
+    fresh = {d: daily_body(by_day.get(d, [])) for d in redo}
+    stored = {} if DRY else load_daily(str(today - timedelta(days=30 + BASE_DAYS + 7)))
     daily = {**stored, **fresh}
     if not DRY:
-        api("PUT", "/api/daily", json={"rows": [{"date": d, "body": json.dumps(b, ensure_ascii=False, separators=(",", ":"))} for d, b in fresh.items()]})
+        rows = [{"date": d, "body": json.dumps(b, ensure_ascii=False, separators=(",", ":"))} for d, b in fresh.items()]
+        for i in range(0, len(rows), 5):
+            api("PUT", "/api/daily", json={"rows": rows[i:i + 5]})
 
     def day(i):
         return str(today - timedelta(days=i))
 
     trend_dates = [day(i) for i in range(TREND_DAYS - 1, -1, -1)]
 
-    def trend_fn(cat):
-        return lambda w: [daily.get(d, {}).get("w", {}).get(cat, {}).get(w, [0])[0] for d in trend_dates]
+    def trend_fn(cat, kind):
+        return lambda k: [daily.get(d, {}).get(kind, {}).get(cat, {}).get(k, [0])[0] for d in trend_dates]
+
+    _, order_all = stats_from_arts(arts)
+
+    def disp(k):
+        return order_all[k].most_common(1)[0][0] if order_all.get(k) else k
 
     out = {"generatedAt": fmt(NOW), "cats": CATS, "trendDates": trend_dates, "periods": [], "data": {}}
     for key, label, n_days in PERIODS:
         if n_days is None:
             frm = fmt(NOW - timedelta(hours=24))
-            cur = count([a for a in arts if a["pub"] >= frm])
-            base_days = [daily[day(i)] for i in range(2, 2 + BASE_DAYS) if day(i) in daily]
+            base_range = range(2, 2 + BASE_DAYS)
         else:
             frm = f"{day(n_days - 1)}T00:00"
+            base_range = range(n_days, n_days + BASE_DAYS) if n_days <= 7 else range(0)
+        from_arts = n_days is None or n_days <= LOAD_DAYS
+        if from_arts:
+            sub = [a for a in arts if a["pub"] >= frm]
+            cur, _ = stats_from_arts(sub)
+        else:
+            sub = []
             cur = merge_days([daily[day(i)] for i in range(n_days) if day(i) in daily])
-            base_days = [daily[day(i)] for i in range(n_days, n_days + BASE_DAYS) if day(i) in daily] if n_days <= 7 else []
+        base_days = [daily[day(i)] for i in base_range if day(i) in daily]
         base = merge_days(base_days) if len(base_days) >= 3 else None
-        out["periods"].append({"key": key, "label": label, "from": frm, "baseDays": len(base_days), "rising": base is not None})
+        out["periods"].append({"key": key, "label": label, "from": frm, "baseDays": len(base_days),
+                               "rising": base is not None, "issues": from_arts})
         out["data"][key] = {}
+        by_cat = collections.defaultdict(list)
+        for i, a in enumerate(sub):
+            by_cat[a["cat"]].append(i)
         for c in CATS:
-            top, rise = rank(cur[c], base[c] if base else None, trend_fn(c))
-            out["data"][key][c] = {"count": cur[c][0], "top": top, "rise": rise}
+            r, b = cur[c], (base[c] if base else None)
+            wb = {"N": b["N"], "cnt": b["w"][0]} if b else None
+            pb = {"N": b["N"], "cnt": b["p"][0]} if b else None
+            w_top, w_rise = rank(r["N"], r["w"], wb, trend_fn(c, "w"))
+            p_top, p_rise = rank(r["N"], r["p"], pb, trend_fn(c, "p"), disp, dedupe=True)
+            blk = {"count": r["N"], "words": {"top": w_top, "rise": w_rise}, "pairs": {"top": p_top, "rise": p_rise}}
+            if from_arts:
+                i_top, i_rise = issues(sub, by_cat[c], pb, r["N"])
+                blk["issues"] = {"top": i_top, "rise": i_rise}
+            out["data"][key][c] = blk
 
     srcs = collections.defaultdict(lambda: collections.Counter())
     for a in arts:
@@ -344,7 +485,7 @@ def main():
         (ROOT / "snapshot.local.json").write_text(text, encoding="utf-8")
     else:
         api("PUT", "/api/kv/snapshot", data=text.encode("utf-8"), headers={"content-type": "application/json"})
-    print(f"키워드 순위 저장 ({len(text) // 1024}KB), {round(time.time() - t0)}초")
+    print(f"이슈·키워드 순위 저장 ({len(text) // 1024}KB), {round(time.time() - t0)}초")
 
 
 if __name__ == "__main__":

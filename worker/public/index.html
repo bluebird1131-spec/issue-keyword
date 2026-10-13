@@ -140,8 +140,45 @@ a { color: inherit; text-decoration: none; }
 .feeds .ok { color: var(--ok); font-weight: 700; }
 .feeds .bad { color: var(--bad); font-weight: 700; }
 
+/* 이슈 */
+.ov .iss { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ov .iss li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px; font-size: 14.5px; font-weight: 600; color: var(--body); white-space: normal; }
+.ov .iss li span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; }
+.ov .iss li small { color: var(--muted); font-weight: 600; font-size: 12.5px; margin-left: 4px; }
+.ov .iss li:first-child { color: var(--heading); font-weight: 800; }
+.issue-card { margin-top: 14px; padding: 18px 18px 6px; }
+.issue-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.issue-head p { margin: 0; font-size: 13px; color: var(--muted); }
+.issues { margin: 10px 0 0; padding: 0; list-style: none; }
+.issues > li { border-top: 1px solid var(--border); }
+.iss-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto 20px; gap: 10px; align-items: center; padding: 11px 4px; cursor: pointer; border-radius: 8px; }
+.iss-row:hover { background: var(--hover); }
+.iss-row .no { font-size: 15px; font-weight: 800; color: var(--faint); text-align: right; }
+.issues > li:nth-child(-n+3) .iss-row .no { color: var(--accent); }
+.iss-t { min-width: 0; }
+.iss-t b { display: block; font-size: 16px; font-weight: 700; color: var(--heading); line-height: 1.45; }
+.chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+.chip { font-size: 12.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 1px 7px; }
+.iss-meta { text-align: right; font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.iss-meta b { color: var(--heading); font-size: 15px; font-weight: 800; }
+.iss-row .chev { color: var(--faint); transition: transform .15s; }
+.issues > li.open .iss-row .chev { transform: rotate(90deg); }
+.iss-body { padding: 0 4px 10px 42px; }
+.iss-body .arts { margin: 0; }
+.iss-more { display: flex; justify-content: center; padding: 8px 0 12px; border-top: 1px solid var(--border); }
+.empty-box { padding: 26px 4px; text-align: center; color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); }
+.seg.sm button { height: 28px; padding: 0 10px; font-size: 13px; }
+
 @media (max-width: 1100px) { .main { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
+  .iss-row { grid-template-columns: 22px minmax(0, 1fr) 16px; }
+  .iss-meta { grid-column: 2; text-align: left; }
+  .iss-meta br { display: none; }
+  .iss-meta .when::before { content: " · "; }
+  .nav a { white-space: nowrap; }
+  #updated { display: none; }
+  .iss-row .chev { grid-column: 3; grid-row: 1; }
+  .iss-body { padding-left: 4px; }
   .wrap { padding: 0 16px; }
   .tb { gap: 10px; }
   .logo .txt, .hide-m { display: none !important; }
@@ -161,7 +198,7 @@ a { color: inherit; text-decoration: none; }
   <div class="wrap tb">
     <a class="logo" href="#"><span class="logo-mark"><i data-lucide="radar"></i></span><span class="txt">이슈 키워드</span></a>
     <nav class="nav">
-      <a href="#" data-view="kw"><i data-lucide="cloud"></i>키워드</a>
+      <a href="#" data-view="kw"><i data-lucide="flame"></i>이슈·키워드</a>
       <a href="#articles" data-view="articles"><i data-lucide="newspaper"></i>전체 기사</a>
     </nav>
     <div class="tb-right">
@@ -177,8 +214,8 @@ a { color: inherit; text-decoration: none; }
   <section id="view-kw">
     <div class="head">
       <div>
-        <h1>지금 분야별로 많이 다뤄지는 키워드</h1>
-        <p>주요 언론사 기사 제목에서 명사를 뽑아, 2곳 이상 매체가 다룬 단어를 기사 수·매체 수로 순위화</p>
+        <h1>지금 분야별 핫이슈</h1>
+        <p>주요 언론사 10곳 기사 중 같은 사건을 다룬 기사를 묶어, 여러 매체가 함께 다룬 순서로 정렬</p>
       </div>
       <div class="controls">
         <div class="seg" id="periodSeg"></div>
@@ -192,11 +229,22 @@ a { color: inherit; text-decoration: none; }
 
     <section class="overview" id="overview"></section>
 
+    <section class="card issue-card">
+      <div class="issue-head">
+        <h2 class="sec-title"><i data-lucide="flame"></i><span id="issueTitle"></span></h2>
+        <p>다룬 매체 수 · 기사 수 · 누르면 묶인 기사</p>
+      </div>
+      <ul class="issues" id="issues"></ul>
+    </section>
+
     <section class="main">
       <div class="card cloud-card">
         <div class="cloud-head">
           <h2 class="sec-title"><i data-lucide="cloud"></i><span id="cloudTitle"></span></h2>
-          <p>글자 크기 = 기사 수 · 단어를 누르면 아래에 관련 기사</p>
+          <div class="seg sm" id="unitSeg">
+            <button data-unit="pairs">두 단어</button>
+            <button data-unit="words">한 단어</button>
+          </div>
         </div>
         <canvas id="cloud"></canvas>
         <div class="cloud-empty" id="cloudEmpty" hidden></div>
@@ -252,7 +300,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const md = s => s ? `${+s.slice(5, 7)}.${+s.slice(8, 10)} ${s.slice(11, 16)}` : '';
 const icons = () => lucide.createIcons();
 let S = null;                         // snapshot
-const st = { period: '24h', mode: 'top', cat: null, kw: null };
+const st = { period: '24h', mode: 'top', unit: 'pairs', cat: null, kw: null, openIssue: null, issueLimit: 10 };
 let kwPage = { offset: 0 }, allPage = { offset: 0 };
 
 async function load() {
@@ -270,39 +318,90 @@ async function load() {
   $('periodSeg').innerHTML = S.periods.map(p => `<button data-period="${p.key}">${esc(p.label)}</button>`).join('');
   $('periodSeg').querySelectorAll('button').forEach(b => b.onclick = () => { st.period = b.dataset.period; renderKw(true); });
   $('modeSeg').querySelectorAll('button').forEach(b => b.onclick = () => { st.mode = b.dataset.mode; renderKw(true); });
+  $('unitSeg').querySelectorAll('button').forEach(b => b.onclick = () => { st.unit = b.dataset.unit; renderKw(true); });
   renderStatus(); initFilters(); route();
 }
 
 const period = () => S.periods.find(p => p.key === st.period);
 const block = cat => S.data[st.period][cat];
-const list = cat => (st.mode === 'rise' ? block(cat).rise : block(cat).top) || [];
+const list = cat => (block(cat)[st.unit] || {})[st.mode === 'rise' ? 'rise' : 'top'] || [];
+const issueList = cat => block(cat).issues ? (block(cat).issues[st.mode === 'rise' ? 'rise' : 'top'] || []) : null;
 
 function renderKw(resetKw) {
   const p = period();
   if (st.mode === 'rise' && !p.rising) st.mode = 'top';
-  $('periodSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.period === st.period));
-  $('modeSeg').querySelectorAll('button').forEach(b => {
-    b.classList.toggle('on', b.dataset.mode === st.mode);
-    if (b.dataset.mode === 'rise') b.disabled = !p.rising;
-  });
+  const on = (sel, attr, v) => $(sel).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset[attr] === v));
+  on('periodSeg', 'period', st.period); on('modeSeg', 'mode', st.mode); on('unitSeg', 'unit', st.unit);
+  $('modeSeg').querySelector('[data-mode="rise"]').disabled = !p.rising;
   const note = $('riseNote');
   note.hidden = p.rising || p.key === '30d';
-  note.querySelector('span').textContent = `급상승은 비교할 과거 자료가 3일 이상 쌓이면 표시됨 (현재 비교 가능 ${p.baseDays}일). '평소 대비 몇 배'로 새로 떠오른 단어를 보여줌`;
-  if (resetKw) st.kw = null;
-  renderOverview(); renderRank(); drawCloud();
+  note.querySelector('span').textContent = `급상승은 비교할 과거 자료가 3일 이상 쌓이면 표시됨 (현재 비교 가능 ${p.baseDays}일). '평소 대비 몇 배'로 새로 떠오른 이슈·단어를 보여줌`;
+  if (resetKw) { st.kw = null; st.openIssue = null; st.issueLimit = 10; }
+  renderOverview(); renderIssues(); renderRank(); drawCloud();
   const l = list(st.cat);
   selectKw(st.kw && l.some(k => k.w === st.kw) ? st.kw : l[0]?.w);
 }
 
 function renderOverview() {
   $('overview').innerHTML = S.cats.map(c => {
-    const l = list(c).slice(0, 5);
+    const iss = issueList(c), l = list(c).slice(0, 5);
+    let body;
+    if (iss) body = iss.length ? `<ol class="iss">${iss.slice(0, 3).map((x, j) => `<li><i>${j + 1}</i><span>${esc(x.t)}<small>${x.m}곳</small></span></li>`).join('')}</ol>` : '<div class="empty">묶인 이슈 없음</div>';
+    else body = l.length ? `<ol>${l.map((k, j) => `<li><i>${j + 1}</i><span>${esc(k.w)}</span></li>`).join('')}</ol>` : '<div class="empty">해당 단어 없음</div>';
     return `<button class="card ov${c === st.cat ? ' on' : ''}" data-cat="${esc(c)}">
-      <div class="ov-h"><b>${esc(c)}</b><small>${block(c).count.toLocaleString()}건</small></div>
-      ${l.length ? `<ol>${l.map((k, j) => `<li><i>${j + 1}</i><span>${esc(k.w)}</span></li>`).join('')}</ol>` : '<div class="empty">해당 단어 없음</div>'}
-    </button>`;
+      <div class="ov-h"><b>${esc(c)}</b><small>${block(c).count.toLocaleString()}건</small></div>${body}</button>`;
   }).join('');
-  $('overview').querySelectorAll('.ov').forEach(b => b.onclick = () => { st.cat = b.dataset.cat; st.kw = null; renderKw(); });
+  $('overview').querySelectorAll('.ov').forEach(b => b.onclick = () => { st.cat = b.dataset.cat; renderKw(true); });
+}
+
+const upBadge = r => r === undefined ? '' : r === null ? '<span class="up">신규</span>' : r >= 2 ? `<span class="up">×${r}</span>` : '';
+
+function renderIssues() {
+  const p = period(), iss = issueList(st.cat);
+  $('issueTitle').textContent = `${st.cat} 이슈 · ${p.label}${st.mode === 'rise' ? ' · 급상승' : ''}`;
+  const ul = $('issues');
+  if (!iss) { ul.innerHTML = '<li class="empty-box">30일은 이슈 묶음 없이 키워드만 제공 (7일 이내 기간을 고르면 이슈가 나옴)</li>'; return; }
+  if (!iss.length) { ul.innerHTML = '<li class="empty-box">여러 매체가 함께 다룬 이슈 없음</li>'; return; }
+  ul.innerHTML = iss.slice(0, st.issueLimit).map((x, i) => `
+    <li data-i="${i}" class="${st.openIssue === i ? 'open' : ''}">
+      <div class="iss-row">
+        <span class="no">${i + 1}</span>
+        <div class="iss-t"><b>${esc(x.t)}${st.mode === 'rise' ? upBadge(x.r) : ''}</b><div class="chips">${x.k.map(k => `<span class="chip">${esc(k)}</span>`).join('')}</div></div>
+        <div class="iss-meta"><b>${x.m}</b>곳 · ${x.n}건<br><span class="when">${md(x.last)}</span></div>
+        <i class="chev" data-lucide="chevron-right"></i>
+      </div>
+      <div class="iss-body" ${st.openIssue === i ? '' : 'hidden'}><ul class="arts"></ul></div>
+    </li>`).join('') + (iss.length > st.issueLimit ? `<li class="iss-more"><button class="btn" type="button" id="issMore"><i data-lucide="chevron-down"></i>${iss.length - st.issueLimit}개 더 보기</button></li>` : '');
+  ul.querySelectorAll('li[data-i] .iss-row').forEach(row => row.onclick = () => toggleIssue(+row.parentElement.dataset.i));
+  if ($('issMore')) $('issMore').onclick = () => { st.issueLimit = 20; renderIssues(); };
+  if (st.openIssue != null && ul.querySelector(`li[data-i="${st.openIssue}"]`)) loadIssue(st.openIssue);
+  icons();
+}
+
+function toggleIssue(i) {
+  st.openIssue = st.openIssue === i ? null : i;
+  $('issues').querySelectorAll('li[data-i]').forEach(li => {
+    const open = +li.dataset.i === st.openIssue;
+    li.classList.toggle('open', open); li.querySelector('.iss-body').hidden = !open;
+  });
+  if (st.openIssue != null) loadIssue(i);
+}
+
+async function loadIssue(i) {
+  const x = issueList(st.cat)[i], ul = $('issues').querySelector(`li[data-i="${i}"] .arts`);
+  if (!ul || ul.dataset.loaded) return;
+  ul.innerHTML = '<li class="state">불러오는 중</li>';
+  try {
+    const j = await fetchArticles({ ids: x.ids.join(','), limit: 60 });
+    const rows = j.rows.map(a => rowHtml(a, x.k.join(' ')));
+    ul.innerHTML = rows.slice(0, 10).join('') || '<li class="state">기사 없음</li>';
+    if (rows.length > 10) {
+      ul.insertAdjacentHTML('beforeend', `<li class="more"><button class="btn" type="button"><i data-lucide="chevron-down"></i>나머지 ${rows.length - 10}건 보기</button></li>`);
+      ul.querySelector('.more button').onclick = () => { ul.querySelector('.more').remove(); ul.insertAdjacentHTML('beforeend', rows.slice(10).join('')); };
+      icons();
+    }
+    ul.dataset.loaded = '1';
+  } catch (e) { ul.innerHTML = `<li class="state">기사를 불러오지 못함: ${esc(e.message)}</li>`; }
 }
 
 function spark(t, on) {
@@ -313,13 +412,11 @@ function spark(t, on) {
   return `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${on ? '#4f46e5' : '#a8a29e'}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2" fill="${on ? '#4f46e5' : '#57534e'}"/></svg>`;
 }
 
-const upBadge = k => k.r === undefined ? '' : k.r === null ? '<span class="up">신규</span>' : k.r >= 2 ? `<span class="up">×${k.r}</span>` : '';
-
 function renderRank() {
   const l = list(st.cat), max = Math.max(1, ...l.map(k => k.n));
   $('rank').innerHTML = l.length ? l.slice(0, 40).map((k, i) => `
     <li data-w="${esc(k.w)}" class="${k.w === st.kw ? 'on' : ''}">
-      <span class="no">${i + 1}</span><span class="w">${esc(k.w)}${st.mode === 'rise' ? upBadge(k) : ''}</span>
+      <span class="no">${i + 1}</span><span class="w">${esc(k.w)}${st.mode === 'rise' ? upBadge(k.r) : ''}</span>
       ${spark(k.t, i < 3)}
       <span class="num"><b>${k.n}</b>건 · ${k.m}곳</span>
       <span class="bar"><span style="width:${(k.n / max * 100).toFixed(1)}%"></span></span>
@@ -328,32 +425,32 @@ function renderRank() {
 }
 
 function drawCloud() {
-  const cv = $('cloud'), l = list(st.cat).slice(0, 50);
-  $('cloudTitle').textContent = `${st.cat} · ${period().label} · ${st.mode === 'rise' ? '급상승' : '많이 다룬'}`;
+  const cv = $('cloud'), pairs = st.unit === 'pairs', l = list(st.cat).slice(0, pairs ? 40 : 50);
+  $('cloudTitle').textContent = `${st.cat} 키워드 · ${period().label}`;
   cv.hidden = !l.length; $('cloudEmpty').hidden = !!l.length;
   if (!l.length) { $('cloudEmpty').textContent = '표시할 단어 없음'; return; }
   const r = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
   cv.width = w * r; cv.height = h * r;
   const ns = l.map(k => k.n), max = Math.max(...ns), min = Math.min(...ns);
-  const big = Math.min(80, w / 6.5), small = 15;
+  const big = pairs ? Math.min(54, w / 10) : Math.min(80, w / 6.5), small = pairs ? 14 : 15;
   const size = n => small + (big - small) * Math.sqrt((n - min) / Math.max(1, max - min));
   const idx = Object.fromEntries(l.map((k, i) => [k.w, i]));
   WordCloud(cv, {
     list: l.map(k => [k.w, size(k.n)]),
-    weightFactor: r, gridSize: Math.round(6 * r),
+    weightFactor: r, gridSize: Math.round((pairs ? 5 : 6) * r),
     fontFamily: '"Pretendard Variable", "Malgun Gothic", sans-serif',
     fontWeight: w => idx[w] < 12 ? 800 : 600,
     color: w => { const i = idx[w]; return i < 3 ? (st.mode === 'rise' ? '#c2410c' : '#4f46e5') : i < 12 ? '#1c1917' : i < 25 ? '#57534e' : '#a8a29e'; },
-    backgroundColor: 'transparent', rotateRatio: 0, ellipticity: 0.5, shrinkToFit: true, drawOutOfBound: false, shuffle: false,
+    backgroundColor: 'transparent', rotateRatio: 0, ellipticity: pairs ? 0.6 : 0.5, shrinkToFit: true, drawOutOfBound: false, shuffle: false,
     click: item => selectKw(item[0]),
   });
 }
 
 function hl(title, kw) {
-  const t = esc(title);
-  if (!kw) return t;
-  const k = esc(kw).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return t.replace(new RegExp(k, 'g'), m => `<mark>${m}</mark>`);
+  const t = esc(title), ws = (kw || '').split(/\s+/).filter(w => w.length > 1);
+  if (!ws.length) return t;
+  const re = new RegExp(ws.map(w => esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+  return t.replace(re, m => `<mark>${m}</mark>`);
 }
 
 function rowHtml(a, kw, showCat) {

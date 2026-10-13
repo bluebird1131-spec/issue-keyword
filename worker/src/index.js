@@ -7,7 +7,7 @@
  *   암호 없이 열리는 것: 로그인 화면, /assets/* (글꼴·아이콘), 수집 스크립트 전용 API
  * 암호 확인 후
  *   GET /api/snapshot                     기간별·분야별 키워드 순위 + 수집 현황 (수집 스크립트가 매시간 만듦)
- *   GET /api/articles?cat&kw&src&q&from&to&limit&offset   기사 목록 (제목·매체·시각·링크)
+ *   GET /api/articles?cat&kw&src&q&from&to&ids&limit&offset   기사 목록 (제목·매체·시각·링크). kw 는 공백으로 여러 단어, ids 는 이슈 기사 번호
  * 수집 스크립트 전용 (Authorization: Bearer INGEST_TOKEN)
  *   GET  /api/recent?since&after&limit     기간 안 기사 (중복 확인·집계용)
  *   POST /api/ingest {articles}            새 기사 저장 (같은 주소·같은 제목은 무시)
@@ -144,12 +144,14 @@ async function route(req, env, url) {
 async function articles(env, q) {
   const where = [], args = [];
   const add = (sql, v) => { where.push(sql); args.push(v); };
-  const from = q.get('from') || kstNow(-24 * 60), to = q.get('to');
-  add('pub >= ?', from);
-  if (to) add('pub < ?', to);
+  const ids = (q.get('ids') || '').split(',').filter(x => /^[0-9a-f]{16}$/.test(x)).slice(0, 60);
+  if (ids.length) add('id IN (SELECT value FROM json_each(?))', JSON.stringify(ids));  // 이슈에 묶인 기사
+  else add('pub >= ?', q.get('from') || kstNow(-24 * 60));
+  if (q.get('to')) add('pub < ?', q.get('to'));
   if (q.get('cat')) add('cat = ?', q.get('cat'));
   if (q.get('src')) add('src = ?', q.get('src'));
-  if (q.get('kw')) add("instr(' ' || kws || ' ', ?) > 0", ` ${q.get('kw')} `);
+  // kw 는 공백으로 여러 단어(두 단어 묶음) — 모두 들어간 기사
+  for (const w of (q.get('kw') || '').split(/\s+/).filter(Boolean).slice(0, 3)) add("instr(' ' || kws || ' ', ?) > 0", ` ${w} `);
   if (q.get('q')) add('instr(title, ?) > 0', q.get('q').trim());
   const limit = clamp(+q.get('limit') || 50, 1, 100), offset = clamp(+q.get('offset') || 0, 0, 5000);
   const rs = await env.DB.prepare(
