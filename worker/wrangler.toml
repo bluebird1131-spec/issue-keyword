@@ -1,0 +1,16 @@
+# 이슈 키워드 사이트 (화면 + API) — 배포: npx -y wrangler@4 deploy
+# 예약 실행은 01 의료계동향 Worker(medical-trend-api)의 30분 예약이 매시 정각에 collect.yml 을 깨움 (무료 플랜 예약 개수 한도)
+name = "issue-keyword"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "issue-keyword-db"
+database_id = "f22f5979-fa69-49b1-9939-73ef852eb5ef"

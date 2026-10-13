@@ -1,0 +1,5 @@
+snapshot.local.json
+__pycache__/
+worker/.wrangler/
+node_modules/
+.dev.vars

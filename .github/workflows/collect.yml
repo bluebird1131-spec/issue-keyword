@@ -1,0 +1,41 @@
+name: 기사 수집 및 키워드 집계
+
+on:
+  schedule:
+    # 주 실행은 01 의료계동향 Worker(medical-trend-api) 예약이 매시 정각 workflow_dispatch 로 깨움. GitHub 예약은 지연·누락이 잦아 예비로만 둠
+    - cron: '37 * * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '다시 확인할 기간(일). 평소 2, 처음 채울 때 7'
+        required: false
+        default: '2'
+      rekey:
+        description: '1 = 불용어·사전을 고친 뒤 기간 안 기사 키워드를 다시 계산'
+        required: false
+        default: ''
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: RSS 수집 → D1 저장 → 키워드 순위
+        env:
+          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+          DAYS: ${{ inputs.days || '2' }}
+          REKEY: ${{ inputs.rekey }}
+        run: python scripts/collect.py

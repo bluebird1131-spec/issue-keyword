@@ -1,0 +1,57 @@
+{
+  "_설명": "분야 → [매체, RSS 주소]. 분야 순서가 화면 순서. 2026-10-14 국내망에서 응답 확인한 주소",
+  "정치": [
+    ["연합뉴스", "https://www.yna.co.kr/rss/politics.xml"],
+    ["조선일보", "https://www.chosun.com/arc/outboundfeeds/rss/category/politics/?outputType=xml"],
+    ["동아일보", "https://rss.donga.com/politics.xml"],
+    ["한겨레", "https://www.hani.co.kr/rss/politics/"],
+    ["경향신문", "https://www.khan.co.kr/rss/rssdata/politic_news.xml"],
+    ["한국경제", "https://www.hankyung.com/feed/politics"],
+    ["SBS", "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=01"],
+    ["뉴시스", "https://www.newsis.com/RSS/politics.xml"]
+  ],
+  "경제": [
+    ["연합뉴스", "https://www.yna.co.kr/rss/economy.xml"],
+    ["조선일보", "https://www.chosun.com/arc/outboundfeeds/rss/category/economy/?outputType=xml"],
+    ["동아일보", "https://rss.donga.com/economy.xml"],
+    ["한겨레", "https://www.hani.co.kr/rss/economy/"],
+    ["경향신문", "https://www.khan.co.kr/rss/rssdata/economy_news.xml"],
+    ["한국경제", "https://www.hankyung.com/feed/economy"],
+    ["SBS", "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=02"],
+    ["뉴시스", "https://www.newsis.com/RSS/economy.xml"]
+  ],
+  "사회": [
+    ["연합뉴스", "https://www.yna.co.kr/rss/society.xml"],
+    ["조선일보", "https://www.chosun.com/arc/outboundfeeds/rss/category/national/?outputType=xml"],
+    ["동아일보", "https://rss.donga.com/national.xml"],
+    ["한겨레", "https://www.hani.co.kr/rss/society/"],
+    ["한국경제", "https://www.hankyung.com/feed/society"],
+    ["SBS", "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=03"],
+    ["뉴시스", "https://www.newsis.com/RSS/society.xml"]
+  ],
+  "국제": [
+    ["연합뉴스", "https://www.yna.co.kr/rss/international.xml"],
+    ["조선일보", "https://www.chosun.com/arc/outboundfeeds/rss/category/international/?outputType=xml"],
+    ["동아일보", "https://rss.donga.com/international.xml"],
+    ["한겨레", "https://www.hani.co.kr/rss/international/"],
+    ["한국경제", "https://www.hankyung.com/feed/international"],
+    ["SBS", "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=07"],
+    ["뉴시스", "https://www.newsis.com/RSS/international.xml"]
+  ],
+  "IT·과학": [
+    ["연합뉴스", "https://www.yna.co.kr/rss/industry.xml"],
+    ["동아일보", "https://rss.donga.com/science.xml"],
+    ["한겨레", "https://www.hani.co.kr/rss/science/"],
+    ["한국경제", "https://www.hankyung.com/feed/it"],
+    ["전자신문", "https://rss.etnews.com/Section902.xml"],
+    ["지디넷코리아", "https://feeds.feedburner.com/zdkorea"]
+  ],
+  "연예": [
+    ["연합뉴스", "https://www.yna.co.kr/rss/entertainment.xml"],
+    ["조선일보", "https://www.chosun.com/arc/outboundfeeds/rss/category/entertainments/?outputType=xml"],
+    ["스포츠동아", "https://rss.donga.com/sportsdonga/entertainment.xml"],
+    ["한국경제", "https://www.hankyung.com/feed/entertainment"],
+    ["SBS", "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=14"],
+    ["뉴시스", "https://www.newsis.com/RSS/entertain.xml"]
+  ]
+}

@@ -1,0 +1,42 @@
+# 이슈 키워드
+
+주요 언론사 기사를 분야(정치·경제·사회·국제·IT·과학·연예)별로 모아, 지금 이슈가 되는 키워드를 워드클라우드·순위로 보여주는 사이트.
+
+- 화면: https://issue-keyword.bluebird1131.workers.dev (병원망에서 열리는 *.workers.dev)
+- 기사 본문은 저장·게시하지 않음. 제목·매체·발행시각·원문 링크만
+
+## 구조
+
+```
+[01 Worker(medical-trend-api) 예약] 매시 정각 → collect.yml (workflow_dispatch)
+        ▼
+[GitHub Actions · scripts/collect.py]  분야별 RSS 수집 → 제목 정리 → Kiwi 명사 추출
+        │   새 기사·일별 집계·키워드 순위(snapshot) → Worker API (INGEST_TOKEN)
+        ▼
+[Cloudflare D1 issue-keyword-db]  articles / daily / kv
+        ▼
+[Cloudflare Worker issue-keyword]  public/index.html + /api/snapshot, /api/articles
+```
+
+## 설정 고치기 (config/)
+
+| 파일 | 내용 |
+|---|---|
+| `feeds.json` | 분야 → [매체, RSS 주소]. 분야 순서가 화면 순서 |
+| `stopwords.txt` | 키워드에서 뺄 단어 |
+| `userdict.txt` | 한 단어로 묶을 복합어·신조어 |
+| `synonyms.json` | 같은 뜻 묶기, 한자 약칭(與·野·北) 바꾸기 |
+
+고친 뒤 커밋하면 다음 수집부터 반영. 이미 모은 기사에도 적용하려면 Actions → 기사 수집 및 키워드 집계 → Run workflow → `rekey` 에 `1`, `days` 에 `30`.
+
+## 키워드 순위
+
+- **많이 다룬**: 2곳 이상 매체가 다룬 단어를 `기사 수 × (1 + 매체 수/4)` 로 정렬
+- **급상승**: 기간 안 비중을 직전 14일 평균 비중과 비교 (×배수). 비교 자료가 3일 이상 쌓이면 표시
+- 기간: 최근 24시간(기사에서 바로 계산), 3일·7일·30일(일별 집계 합산)
+
+## 배포·운영
+
+- Worker: `cd worker && npx -y wrangler@4 deploy` / 스키마: `npx -y wrangler@4 d1 execute issue-keyword-db --remote --file schema.sql`
+- Secrets: Worker `INGEST_TOKEN` = Actions Secret `INGEST_TOKEN` (바꿀 때는 둘 다)
+- 로컬 실행: `pip install -r requirements.txt` 후 `INGEST_TOKEN=… python scripts/collect.py` (`DRY=1` 이면 저장 없이 snapshot.local.json)
