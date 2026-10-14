@@ -1,5 +1,5 @@
 {
-  "_설명": "분야 → [매체, 주소]. 분야 순서가 화면 순서. 'ytn:코드'는 RSS가 없는 YTN 목록(분야 코드). 2026-10-14 국내망에서 응답 확인",
+  "_설명": "분야 → [매체, 주소]. 분야 순서가 화면 순서. 'ytn:코드'는 RSS가 없는 YTN 목록(분야 코드). 2026-10-14 국내망에서 응답 확인. 뉴시스 health.xml 은 이름과 달리 'IT·바이오' 섹션이라 IT 에 둠",
   "정치": [
     ["연합뉴스", "https://www.yna.co.kr/rss/politics.xml"],
     ["조선일보", "https://www.chosun.com/arc/outboundfeeds/rss/category/politics/?outputType=xml"],
@@ -37,7 +37,8 @@
     ["한국경제", "https://www.hankyung.com/feed/it"],
     ["YTN", "ytn:0105"],
     ["전자신문", "https://www.etnews.com/rss/Section902.xml"],
-    ["지디넷코리아", "https://feeds.feedburner.com/zdkorea"]
+    ["지디넷코리아", "https://feeds.feedburner.com/zdkorea"],
+    ["뉴시스", "https://www.newsis.com/RSS/health.xml"]
   ],
   "연예": [
     ["연합뉴스", "https://www.yna.co.kr/rss/entertainment.xml"],
@@ -60,8 +61,7 @@
   "건강": [
     ["연합뉴스", "https://www.yna.co.kr/rss/health.xml"],
     ["조선일보", "https://www.chosun.com/arc/outboundfeeds/rss/category/medical/?outputType=xml"],
-    ["동아일보", "https://rss.donga.com/health.xml"],
-    ["뉴시스", "https://www.newsis.com/RSS/health.xml"]
+    ["동아일보", "https://rss.donga.com/health.xml"]
   ],
   "문화": [
     ["연합뉴스", "https://www.yna.co.kr/rss/culture.xml"],
